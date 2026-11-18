@@ -27,6 +27,7 @@
     SILENCIAR                      apaga el sonido de la alarma actual
     PROBAR_ALARMA                  suena el buzzer 1 segundo
     MENSAJE:texto                  muestra el texto en la pantalla LCD
+    PUERTA_ABRIR / PUERTA_CERRAR   simula abrir o cerrar la puerta desde la app
 */
 
 #include <WiFi.h>
@@ -73,14 +74,23 @@ unsigned long mensajeHasta = 0;      // hasta cuando se muestra un mensaje en el
 float temp = 4.0, hum = 0;          // temp = temperatura interior (modelo termico)
 float ambiente = 24.0;               // temperatura de la cocina medida por el DHT22
 bool puertaAbierta = false;
+bool puertaRemota = false;           // puerta abierta desde la app (simulacion)
+String lcdL1 = "Nevera IA", lcdL2 = "Conectando...";   // lo que muestra la LCD (se envia a la app)
+
+// Escribe dos lineas en la LCD y las guarda para enviarlas a la app
+void escribirLCD(String l1, String l2) {
+  lcdL1 = l1.substring(0, 16);
+  lcdL2 = l2.substring(0, 16);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(lcdL1);
+  lcd.setCursor(0, 1);
+  lcd.print(lcdL2);
+}
 
 void mostrarObjetivo() {
   // Muestra el nuevo objetivo en la LCD durante 3 segundos y aplica el termostato de inmediato
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Termostato");
-  lcd.setCursor(0, 1);
-  lcd.print("Objetivo: " + String(objetivo, 0) + " C");
+  escribirLCD("Termostato", "Objetivo: " + String(objetivo, 0) + " C");
   mensajeHasta = millis() + 3000;
   ultimoEnvio = 0;   // fuerza una actualizacion y publicacion inmediata
 }
@@ -102,16 +112,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
   else if (msg == "MODO_MANUAL")   { modoAuto = false; }
   else if (msg == "SILENCIAR")     { silenciada = true; noTone(BUZZER_PIN); }
   else if (msg == "PROBAR_ALARMA") { tone(BUZZER_PIN, 1200, 1000); }
+  else if (msg == "PUERTA_ABRIR")  { puertaRemota = true;  ultimoEnvio = 0; }
+  else if (msg == "PUERTA_CERRAR") { puertaRemota = false; ultimoEnvio = 0; }
   else if (msg.startsWith("UMBRAL:")) {
     umbral = msg.substring(7).toFloat();
   }
   else if (msg.startsWith("MENSAJE:")) {
     String texto = msg.substring(8);
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print(texto.substring(0, 16));
-    lcd.setCursor(0, 1);
-    lcd.print(texto.substring(16, 32));
+    escribirLCD(texto.substring(0, 16), texto.length() > 16 ? texto.substring(16, 32) : String(""));
     mensajeHasta = millis() + 5000;   // el mensaje se ve 5 segundos
   }
 }
@@ -153,12 +161,11 @@ void setup() {
 
   lcd.init();
   lcd.backlight();
-  lcd.print("Nevera IA");
-  lcd.setCursor(0, 1);
-  lcd.print("Conectando...");
+  escribirLCD("Nevera IA", "Conectando...");
 
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
+  client.setBufferSize(768);               // el JSON incluye el texto de la LCD
   client.setCallback(callback);
 }
 
@@ -167,7 +174,8 @@ void actualizarLogica() {
   TempAndHumidity data = dhtSensor.getTempAndHumidity();
   if (!isnan(data.temperature)) ambiente = data.temperature;
   if (!isnan(data.humidity)) hum = data.humidity;
-  puertaAbierta = digitalRead(PUERTA_PIN) == HIGH;
+  // La puerta esta abierta si se mueve el interruptor o si se abre desde la app
+  puertaAbierta = digitalRead(PUERTA_PIN) == HIGH || puertaRemota;
 
   // Modelo termico de la nevera (cada 2 s)
   if (compresor) temp -= 0.30;                          // el compresor saca calor
@@ -217,18 +225,16 @@ void actualizarSalidas() {
 
 void mostrarLCD() {
   if (millis() < mensajeHasta) return;      // hay un mensaje de Streamlit en pantalla
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("T:" + String(temp, 1) + "C Obj:" + String(objetivo, 0) + "C");
-  lcd.setCursor(0, 1);
-  if (alarma)             lcd.print("ALARMA!");
-  else if (puertaAbierta) lcd.print("Puerta ABIERTA");
-  else if (compresor)     lcd.print("Enfriando...");
-  else                    lcd.print("Puerta cerrada");
+  String l2;
+  if (alarma)             l2 = "ALARMA!";
+  else if (puertaAbierta) l2 = "Puerta ABIERTA";
+  else if (compresor)     l2 = "Enfriando...";
+  else                    l2 = "Puerta cerrada";
+  escribirLCD("T:" + String(temp, 1) + "C Obj:" + String(objetivo, 0) + "C", l2);
 }
 
 void publicarDatos() {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   doc["temp"] = temp;
   doc["hum"] = hum;
   doc["ambiente"] = ambiente;
@@ -241,7 +247,10 @@ void publicarDatos() {
   doc["alarma"] = alarma;
   doc["motivo"] = motivoAlarma;
   doc["silenciada"] = silenciada;
-  char buffer[256];
+  doc["puerta_remota"] = puertaRemota;
+  doc["lcd1"] = lcdL1;
+  doc["lcd2"] = lcdL2;
+  char buffer[512];
   serializeJson(doc, buffer);
   client.publish(TOPIC_DATOS, buffer);
   Serial.println(buffer);

@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-from estilo import AMBAR, AZUL, GRIS, ROJO, VERDE, barra_superior, encabezado, estado, html, ic
+from estilo import AMBAR, AZUL, GRIS, ROJO, VERDE, barra_superior, encabezado, estado, html, ic, lcd_virtual
 import streamlit.components.v1 as components
 
 from mqtt_utils import BROKER_WS, TOPIC_CMD, TOPIC_INV, ZONA, enviar_orden, leer_estado
@@ -374,6 +374,15 @@ def panel_recetas():
                     responder(f"{receta['nombre']}. " + " ".join(receta["pasos"]))
 
 
+@st.fragment(run_every=2)
+def pantalla_nevera():
+    """Réplica en vivo de la LCD: muestra la confirmación de cada alimento registrado."""
+    d = leer_estado().ultimo or {}
+    html(f'<div class="card"><div class="titulo">{ic("developer_board")}Pantalla de la nevera</div>'
+         f'{lcd_virtual(d.get("lcd1", "Sin conexión"), d.get("lcd2", ""), apagada=not d)}'
+         f'<div class="etiqueta" style="margin-top:.6rem">Al agregar o sacar un alimento, la nevera lo confirma aquí.</div></div>')
+
+
 # =====================================================================
 tab_cam, tab_voz, tab_inv, tab_rec = st.tabs([":material/photo_camera: Cámara",
                                               ":material/mic: Voz y texto",
@@ -507,6 +516,8 @@ with tab_voz:
             for i, t in comandos
         )
         html(f'<div class="card"><div class="titulo">{ic("record_voice_over")}Comandos disponibles</div>{filas}</div>')
+        st.write("")
+        pantalla_nevera()
 
 # ---------- Inventario ----------
 @st.fragment(run_every=4)
@@ -517,7 +528,8 @@ def panel_inventario():
         agregar(pendientes.popleft(), notificar=False)
     items = inventario()
     cab1, cab2, cab3 = st.columns([2, 1, 1], vertical_alignment="center")
-    cab1.markdown(f"#### {len(items)} producto{'s' if len(items) != 1 else ''} registrado{'s' if len(items) != 1 else ''}")
+    n_tipos = len({sin_tildes(i["alimento"]) for i in items})
+    cab1.markdown(f"#### {len(items)} producto{'s' if len(items) != 1 else ''} · {n_tipos} tipo{'s' if n_tipos != 1 else ''}")
     with cab2.popover("Simular días", icon=":material/calendar_month:", use_container_width=True):
         dias_extra = st.slider("Días transcurridos", 0, 15, 0)
     if cab3.button("Leer inventario", icon=":material/volume_up:", use_container_width=True):
@@ -536,8 +548,16 @@ def panel_inventario():
             st.rerun()
     else:
         ahora = datetime.now(ZONA) + timedelta(days=dias_extra)
-        tiles, urgentes = [], []
+        # Agrupa los alimentos repetidos: cantidad y fecha del más antiguo
+        grupos = {}
         for item in items:
+            clave = sin_tildes(item["alimento"])
+            if clave not in grupos:
+                grupos[clave] = {"alimento": item["alimento"], "fecha": item["fecha"], "cantidad": 0}
+            grupos[clave]["cantidad"] += 1
+            grupos[clave]["fecha"] = min(grupos[clave]["fecha"], item["fecha"])
+        tiles, urgentes = [], []
+        for item in grupos.values():
             nombre = sin_tildes(item["alimento"])
             dias = (ahora - item["fecha"]).days
             restantes = DURACION_DIAS.get(nombre, 7) - dias
@@ -549,9 +569,10 @@ def panel_inventario():
                 urgentes.append(item["alimento"])
             else:
                 chip, color = estado(f"{restantes} d restantes", "#11804F", "#E7F7EF"), VERDE
+            cantidad_txt = f' <span style="color:#6B7185;font-weight:600">×{item["cantidad"]}</span>' if item["cantidad"] > 1 else ""
             tiles.append(
                 f'<div class="tile">{ic(ICONOS.get(nombre, "kitchen"), 40, color)}'
-                f'<div class="nom">{item["alimento"]}</div>'
+                f'<div class="nom">{item["alimento"]}{cantidad_txt}</div>'
                 f'<div class="sub">Registrado {item["fecha"].strftime("%d/%m %H:%M")}</div>{chip}</div>'
             )
         html(f'<div class="grid">{"".join(tiles)}</div>')

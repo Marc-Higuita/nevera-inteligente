@@ -14,6 +14,7 @@ GRIS = "#6B7185"
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block');
 
 html, body, .stApp, .stMarkdown, button, input, textarea { font-family: 'Plus Jakarta Sans', sans-serif !important; }
@@ -78,6 +79,15 @@ h1, h2, h3, h4 { color: #14161F; letter-spacing: -0.02em; }
 .tile .ic { font-size:40px; }
 .tile .nom { font-weight:700; margin-top:.4rem; color:#14161F; }
 .tile .sub { font-size:.75rem; color:#6B7185; margin:.15rem 0 .5rem; }
+
+.lcd-pcb { background:#1F6B45; border-radius:16px; padding:12px; box-shadow: inset 0 0 0 2px #175536; }
+.lcd-marco { background:#0E1A12; border-radius:8px; padding:7px; }
+.lcd { background:#9DBF2E; border-radius:4px; padding:6px 10px; font-family:'VT323', monospace; font-size:30px;
+       line-height:1.05; color:#22300C; letter-spacing:3px; white-space:pre; overflow:hidden;
+       box-shadow: inset 0 0 18px rgba(0,0,0,.25);
+       background-image: repeating-linear-gradient(0deg, rgba(0,0,0,.06) 0 1px, transparent 1px 3px),
+                         repeating-linear-gradient(90deg, rgba(0,0,0,.06) 0 1px, transparent 1px 3px); }
+.lcd.apagada { background:#6E8A22; color:#4A5E18; }
 
 /* Widgets de Streamlit */
 .stButton button, .stFormSubmitButton button { border-radius:999px; font-weight:600; padding:.5rem 1.1rem;
@@ -191,3 +201,13 @@ def sonido(tipo: str = "confirmar"):
         </script>""",
         height=0,
     )
+
+
+def lcd_virtual(linea1: str = "", linea2: str = "", apagada: bool = False) -> str:
+    """Réplica de la pantalla LCD 16x2 del ESP32."""
+    import html as _html
+
+    l1 = _html.escape((linea1 or "")[:16].ljust(16))
+    l2 = _html.escape((linea2 or "")[:16].ljust(16))
+    clase = "lcd apagada" if apagada else "lcd"
+    return (f'<div class="lcd-pcb"><div class="lcd-marco"><div class="{clase}">{l1}<br>{l2}</div></div></div>')
