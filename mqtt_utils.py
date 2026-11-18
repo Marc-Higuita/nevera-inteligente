@@ -18,6 +18,9 @@ BROKER = "broker.mqttdashboard.com"   # o la IP del profe: "157.230.214.127"
 PUERTO = 1883
 TOPIC_DATOS = "nevera_ma_eafit/datos"
 TOPIC_CMD = "nevera_ma_eafit/cmd"
+TOPIC_INV = "nevera_ma_eafit/inventario"   # el escáner en vivo publica aquí "AGREGAR:Nombre"
+# El navegador se conecta al mismo broker (HiveMQ público) por WebSocket seguro
+BROKER_WS = "wss://broker.hivemq.com:8884/mqtt"
 ZONA = ZoneInfo("America/Bogota")
 
 
@@ -28,6 +31,7 @@ class EstadoNevera:
         self.ultimo = None              # último JSON recibido
         self.ultima_hora = None         # time.time() de la última lectura
         self.historial = deque(maxlen=150)
+        self.pendientes = deque()       # alimentos que llegan del escáner en vivo
         self.conectado = False
         self.lock = threading.Lock()
 
@@ -39,11 +43,17 @@ def obtener_cliente():
     def on_connect(client, userdata, flags, reason_code, properties):
         estado.conectado = reason_code == 0
         client.subscribe(TOPIC_DATOS)
+        client.subscribe(TOPIC_INV)
 
     def on_disconnect(client, userdata, flags, reason_code, properties):
         estado.conectado = False
 
     def on_message(client, userdata, msg):
+        if msg.topic == TOPIC_INV:
+            texto = msg.payload.decode(errors="ignore")
+            if texto.startswith("AGREGAR:") and texto[8:].strip():
+                estado.pendientes.append(texto[8:].strip()[:30])
+            return
         try:
             datos = json.loads(msg.payload.decode())
         except (ValueError, UnicodeDecodeError):

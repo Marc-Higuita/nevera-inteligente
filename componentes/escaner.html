@@ -1,0 +1,222 @@
+<!-- Escáner en vivo: detección de alimentos en tiempo real en el navegador
+     (TensorFlow.js + COCO-SSD) con interfaz tipo HUD y envío por MQTT. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: transparent; font-family: 'JetBrains Mono', monospace; color: #DFFFE6; }
+  .wrap { display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
+  .pantalla { position: relative; background: #070A0D; border-radius: 22px; overflow: hidden;
+              aspect-ratio: 16/9; box-shadow: 0 18px 40px rgba(7,10,13,.35); }
+  video, canvas.capa { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .portada { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
+             align-items: center; justify-content: center; text-align: center; padding: 20px; }
+  .portada h3 { font-family: 'Plus Jakarta Sans'; color: white; font-size: 1.25rem; }
+  .portada p { color: #8FA3A0; font-size: .8rem; max-width: 380px; line-height: 1.5; }
+  .btn { font-family: 'Plus Jakarta Sans'; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer;
+         padding: .7rem 1.3rem; font-size: .9rem; transition: transform .1s; }
+  .btn:active { transform: scale(.97); }
+  .btn.verde { background: #39FF6A; color: #04210C; }
+  .btn.oscuro { background: #1A2128; color: #DFFFE6; border: 1px solid #2B3640; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .panel { background: #0B1015; border-radius: 22px; padding: 16px; display: flex; flex-direction: column;
+           gap: 12px; border: 1px solid #1C262E; }
+  .rotulo { font-size: .66rem; color: #6E8580; letter-spacing: .12em; }
+  .zoom { width: 100%; aspect-ratio: 1; background: #070A0D; border: 2px solid #39FF6A; border-radius: 10px; }
+  .barra-top { height: 14px; background: #39FF6A; border-radius: 8px 8px 0 0; margin-bottom: -4px;
+               background-image: repeating-linear-gradient(90deg, #04210C 0 2px, transparent 2px 4px, #04210C 4px 5px, transparent 5px 8px);
+               background-size: 60px 8px; background-repeat: no-repeat; background-position: 6px 3px; }
+  .nombre { font-family: 'Plus Jakarta Sans'; font-size: 1.5rem; font-weight: 800; color: white; }
+  .medidor { height: 6px; background: #1A2128; border-radius: 6px; overflow: hidden; }
+  .medidor div { height: 100%; width: 0; background: #39FF6A; transition: width .3s; }
+  .fila { display: flex; justify-content: space-between; font-size: .72rem; color: #9FB5B0; }
+  .lista { font-size: .72rem; color: #9FB5B0; line-height: 1.7; min-height: 40px; }
+  .aviso { font-size: .75rem; color: #39FF6A; min-height: 1em; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: .66rem; color: #9FB5B0; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: #5B6670; display: inline-block; }
+  @media (max-width: 760px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <div class="pantalla" id="pantalla">
+    <video id="video" playsinline muted></video>
+    <canvas class="capa" id="capa"></canvas>
+    <div class="portada" id="portada">
+      <h3>Escáner de alimentos en tiempo real</h3>
+      <p>La detección se ejecuta en este navegador con TensorFlow.js. Muestra frutas, verduras,
+         bebidas y recipientes frente a la cámara.</p>
+      <button class="btn verde" id="iniciar">Iniciar escáner</button>
+      <p id="estado"></p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="fila"><span class="rotulo">DETECCIÓN PRINCIPAL</span>
+      <span class="pill"><i id="luz"></i><span id="mqtt">MQTT</span></span></div>
+    <div><div class="barra-top"></div><canvas class="zoom" id="zoom" width="300" height="300"></canvas></div>
+    <div>
+      <div class="rotulo" id="idobj">ID: —</div>
+      <div class="nombre" id="nombre">Sin objetivo</div>
+    </div>
+    <div class="medidor"><div id="medidor"></div></div>
+    <div class="fila"><span>CONFIANZA</span><span id="conf">0%</span></div>
+    <div class="lista" id="lista"></div>
+    <button class="btn verde" id="registrar" disabled>Registrar en la nevera</button>
+    <button class="btn oscuro" id="detener" disabled>Detener</button>
+    <div class="aviso" id="aviso"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+const TOPIC_CMD = "__TOPIC_CMD__", TOPIC_INV = "__TOPIC_INV__", BROKER_WS = "__BROKER_WS__";
+
+// Clases de COCO-SSD que interesan en una nevera, con su nombre en español
+const ES = {
+  banana: "Banano", apple: "Manzana", orange: "Naranja", broccoli: "Brócoli", carrot: "Zanahoria",
+  sandwich: "Sándwich", "hot dog": "Salchicha", pizza: "Pizza", donut: "Dona", cake: "Torta",
+  bottle: "Bebida", cup: "Taza", bowl: "Recipiente", "wine glass": "Copa", refrigerator: "Nevera",
+};
+const VERDE = "#39FF6A";
+const $ = id => document.getElementById(id);
+const video = $("video"), capa = $("capa"), ctx = capa.getContext("2d");
+const zoom = $("zoom"), zctx = zoom.getContext("2d");
+let modelo = null, stream = null, activo = false, principal = null, cliente = null;
+const ids = {}; let contador = 0, cuadros = 0, t0 = performance.now(), fps = 0;
+
+// ---------- MQTT (navegador -> broker) ----------
+try {
+  cliente = mqtt.connect(BROKER_WS, { clientId: "escaner-" + Math.random().toString(16).slice(2, 8),
+                                      reconnectPeriod: 4000 });
+  cliente.on("connect", () => { $("luz").style.background = VERDE; $("mqtt").textContent = "MQTT EN LÍNEA"; });
+  cliente.on("close", () => { $("luz").style.background = "#5B6670"; $("mqtt").textContent = "MQTT SIN CONEXIÓN"; });
+} catch (e) { $("mqtt").textContent = "MQTT NO DISPONIBLE"; }
+
+// ---------- Inicio y parada ----------
+$("iniciar").onclick = async () => {
+  try {
+    $("estado").textContent = "Solicitando acceso a la cámara…";
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    video.srcObject = stream; await video.play();
+    $("estado").textContent = "Cargando modelo de detección…";
+    modelo = modelo || await cocoSsd.load({ base: "lite_mobilenet_v2" });
+    $("portada").style.display = "none";
+    $("detener").disabled = false; activo = true; ciclo();
+  } catch (e) {
+    $("estado").textContent = "No fue posible iniciar: " + e.message;
+  }
+};
+$("detener").onclick = () => {
+  activo = false; if (stream) stream.getTracks().forEach(t => t.stop());
+  ctx.clearRect(0, 0, capa.width, capa.height);
+  $("portada").style.display = "flex"; $("estado").textContent = "Escáner detenido.";
+  $("detener").disabled = true; $("registrar").disabled = true;
+};
+
+$("registrar").onclick = () => {
+  if (!principal) return;
+  const nombre = principal.nombre;
+  if (cliente && cliente.connected) {
+    cliente.publish(TOPIC_INV, "AGREGAR:" + nombre);
+    cliente.publish(TOPIC_CMD, "MENSAJE:Detectado: " + nombre);
+    $("aviso").textContent = "Registrado: " + nombre + " (inventario y pantalla de la nevera)";
+  } else {
+    $("aviso").textContent = "Sin conexión MQTT. Intenta de nuevo en unos segundos.";
+  }
+  setTimeout(() => $("aviso").textContent = "", 4000);
+};
+
+// ---------- Ciclo de detección ----------
+async function ciclo() {
+  if (!activo) return;
+  if (video.readyState >= 2) {
+    if (capa.width !== video.videoWidth) { capa.width = video.videoWidth; capa.height = video.videoHeight; }
+    const preds = (await modelo.detect(video, 12, 0.4)).filter(p => ES[p.class]);
+    dibujar(preds);
+    cuadros++;
+    const ahora = performance.now();
+    if (ahora - t0 > 1000) { fps = cuadros; cuadros = 0; t0 = ahora; }
+  }
+  requestAnimationFrame(ciclo);
+}
+
+function idDe(clase) {
+  if (!ids[clase]) ids[clase] = "ALI-" + String(++contador).padStart(4, "0");
+  return ids[clase];
+}
+
+function dibujar(preds) {
+  const W = capa.width, H = capa.height, k = W / 1280;
+  ctx.clearRect(0, 0, W, H);
+
+  // Cuadrícula y línea de escaneo
+  ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 1;
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath(); ctx.moveTo(W * i / 3, 0); ctx.lineTo(W * i / 3, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, H * i / 3); ctx.lineTo(W, H * i / 3); ctx.stroke();
+  }
+  const y = (performance.now() / 12) % H;
+  const g = ctx.createLinearGradient(0, y - 40 * k, 0, y);
+  g.addColorStop(0, "rgba(57,255,106,0)"); g.addColorStop(1, "rgba(57,255,106,.18)");
+  ctx.fillStyle = g; ctx.fillRect(0, y - 40 * k, W, 40 * k);
+
+  // Textos del HUD
+  const hora = new Date().toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" });
+  ctx.font = `600 ${15 * k}px JetBrains Mono`; ctx.fillStyle = "rgba(255,255,255,.9)";
+  ctx.fillText("SYS DIAG: OK", 22 * k, 34 * k);
+  ctx.textAlign = "right"; ctx.fillText("HORA: " + hora + " COT", W - 22 * k, 34 * k);
+  ctx.fillText("MODO: ESCANEO · " + fps + " FPS", W - 22 * k, H - 22 * k);
+  ctx.textAlign = "left"; ctx.fillText("OBJETOS DETECTADOS: " + preds.length, 22 * k, H - 22 * k);
+
+  // Recuadros
+  principal = null;
+  preds.forEach(p => {
+    const [x, y0, w, h] = p.bbox, nombre = ES[p.class], id = idDe(p.class);
+    const c = 22 * k;  // largo de las esquinas
+    ctx.strokeStyle = VERDE; ctx.lineWidth = 3 * k;
+    [[x, y0, 1, 1], [x + w, y0, -1, 1], [x, y0 + h, 1, -1], [x + w, y0 + h, -1, -1]].forEach(([cx, cy, sx, sy]) => {
+      ctx.beginPath(); ctx.moveTo(cx + sx * c, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + sy * c); ctx.stroke();
+    });
+    ctx.lineWidth = 1 * k; ctx.strokeStyle = "rgba(57,255,106,.55)"; ctx.strokeRect(x, y0, w, h);
+
+    // Etiqueta con "código de barras"
+    const texto = `${nombre.toUpperCase()}  ${(p.score * 100).toFixed(0)}%`;
+    ctx.font = `700 ${15 * k}px JetBrains Mono`;
+    const tw = Math.max(ctx.measureText(texto).width, ctx.measureText("ID: " + id).width) + 20 * k;
+    const ty = Math.max(y0 - 54 * k, 0);
+    ctx.fillStyle = VERDE; ctx.fillRect(x, ty, tw, 12 * k);
+    ctx.fillStyle = "#04210C";
+    for (let i = 0; i < 26; i++) if ((i * 7) % 3) ctx.fillRect(x + 6 * k + i * 3 * k, ty + 2 * k, (i % 2 + 1) * k, 8 * k);
+    ctx.fillStyle = "rgba(4,33,12,.85)"; ctx.fillRect(x, ty + 12 * k, tw, 40 * k);
+    ctx.strokeStyle = VERDE; ctx.lineWidth = 1.5 * k; ctx.strokeRect(x, ty, tw, 52 * k);
+    ctx.fillStyle = VERDE; ctx.fillText(texto, x + 10 * k, ty + 29 * k);
+    ctx.font = `400 ${12 * k}px JetBrains Mono`; ctx.fillStyle = "#BFFFD0";
+    ctx.fillText("ID: " + id, x + 10 * k, ty + 46 * k);
+
+    if (!principal || p.score * w * h > principal.peso) principal = { ...p, nombre, id, peso: p.score * w * h };
+  });
+
+  actualizarPanel(preds);
+}
+
+function actualizarPanel(preds) {
+  zctx.fillStyle = "#070A0D"; zctx.fillRect(0, 0, 300, 300);
+  if (!principal) {
+    $("nombre").textContent = "Buscando…"; $("idobj").textContent = "ID: —";
+    $("conf").textContent = "0%"; $("medidor").style.width = "0%";
+    $("lista").textContent = "Acerca un alimento a la cámara."; $("registrar").disabled = true;
+    return;
+  }
+  const [x, y, w, h] = principal.bbox, lado = Math.max(w, h) * 1.15;
+  const cx = x + w / 2 - lado / 2, cy = y + h / 2 - lado / 2;
+  zctx.drawImage(video, cx, cy, lado, lado, 0, 0, 300, 300);
+  $("nombre").textContent = principal.nombre;
+  $("idobj").textContent = "ID: " + principal.id;
+  const pc = Math.round(principal.score * 100);
+  $("conf").textContent = pc + "%"; $("medidor").style.width = pc + "%";
+  $("lista").innerHTML = preds.map(p => `▸ ${ES[p.class]} · ${(p.score * 100).toFixed(0)}% · ${idDe(p.class)}`).join("<br>");
+  $("registrar").disabled = false;
+}
+</script>

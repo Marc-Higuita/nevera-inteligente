@@ -10,7 +10,9 @@ import streamlit as st
 from PIL import Image
 
 from estilo import AMBAR, AZUL, GRIS, ROJO, VERDE, barra_superior, encabezado, estado, html, ic
-from mqtt_utils import ZONA, enviar_orden, leer_estado
+import streamlit.components.v1 as components
+
+from mqtt_utils import BROKER_WS, TOPIC_CMD, TOPIC_INV, ZONA, enviar_orden, leer_estado
 
 barra_superior(leer_estado().conectado)
 encabezado("Despensa", "Registra alimentos con la cámara o la voz y controla su vida útil.", "shopping_basket")
@@ -38,6 +40,8 @@ ICONOS = {
     "calabacin": "eco", "maiz": "eco", "ahuyama": "eco", "agua": "water_bottle",
     "gaseosa": "local_drink", "vino": "wine_bar", "cerveza": "sports_bar", "pizza": "local_pizza",
     "helado": "icecream", "salchicha": "kebab_dining", "hamburguesa": "lunch_dining",
+    "bebida": "local_drink", "taza": "coffee", "recipiente": "rice_bowl", "dona": "donut_large",
+    "torta": "cake", "sandwich": "lunch_dining", "copa": "wine_bar",
     "pan": "bakery_dining", "mantequilla": "breakfast_dining", "pescado": "set_meal",
     "arepa": "bakery_dining", "uvas": "nutrition", "mango": "nutrition", "aguacate": "nutrition",
     "cebolla": "eco", "papa": "eco", "jugo": "local_drink", "salsa": "liquor", "pasta": "ramen_dining", "sopa": "soup_kitchen",
@@ -67,10 +71,11 @@ def datos_de_ejemplo():
     return [{"alimento": n, "fecha": ahora - timedelta(days=d, hours=1)} for n, d in EJEMPLO]
 
 
-def agregar(alimento: str):
+def agregar(alimento: str, notificar: bool = True):
     alimento = alimento.strip().capitalize()
     inventario().append({"alimento": alimento, "fecha": datetime.now(ZONA)})
-    enviar_orden(f"MENSAJE:+ {alimento}")       # aparece en la LCD de la nevera
+    if notificar:
+        enviar_orden(f"MENSAJE:+ {alimento}")   # aparece en la LCD de la nevera
     return f"{alimento} se agregó al inventario."
 
 
@@ -246,12 +251,23 @@ tab_cam, tab_voz, tab_inv = st.tabs([":material/photo_camera: Cámara",
                                      ":material/inventory_2: Inventario"])
 
 # ---------- Cámara ----------
+@st.cache_data
+def html_escaner():
+    ruta = Path(__file__).resolve().parent.parent / "componentes" / "escaner.html"
+    return (ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD)
+            .replace("__TOPIC_INV__", TOPIC_INV).replace("__BROKER_WS__", BROKER_WS))
+
+
 with tab_cam:
+    origen = st.segmented_control("Origen de la imagen", ["Escáner en vivo", "Cámara", "Subir foto", "Enlace"],
+                                  default="Escáner en vivo", label_visibility="collapsed")
+    if origen == "Escáner en vivo":
+        components.html(html_escaner(), height=560, scrolling=False)
+        st.caption("Detección en tiempo real con TensorFlow.js (COCO-SSD). Para leche, huevos, queso y "
+                   "otros productos sin categoría propia, usa la opción Cámara.")
     izq, der = st.columns([1.2, 1], gap="large")
     imagen = None
     with izq:
-        origen = st.segmented_control("Origen de la imagen", ["Cámara", "Subir foto", "Enlace"],
-                                      default="Cámara", label_visibility="collapsed")
         if origen == "Subir foto":
             archivo = st.file_uploader("Sube una foto del alimento", type=["jpg", "jpeg", "png", "webp"])
             if archivo is not None:
@@ -266,7 +282,7 @@ with tab_cam:
                     st.error("No fue posible abrir la imagen. Prueba con otro enlace o descarga la foto "
                              "y usa la opción Subir foto.", icon=":material/link_off:")
                     st.caption(f"Detalle técnico: {type(e).__name__}: {e}")
-        else:
+        elif origen == "Cámara":
             foto = st.camera_input("Ubica el alimento frente a la cámara y toma la foto")
             if foto is not None:
                 imagen = Image.open(foto)
@@ -274,7 +290,9 @@ with tab_cam:
             st.image(imagen, use_container_width=True)
 
     with der:
-        if imagen is None:
+        if origen == "Escáner en vivo":
+            pass
+        elif imagen is None:
             html(f"""
             <div class="card" style="text-align:center;padding:2rem">
               {ic('center_focus_strong', 44, GRIS)}
@@ -361,7 +379,12 @@ with tab_voz:
         html(f'<div class="card"><div class="titulo">{ic("record_voice_over")}Comandos disponibles</div>{filas}</div>')
 
 # ---------- Inventario ----------
-with tab_inv:
+@st.fragment(run_every=4)
+def panel_inventario():
+    # Alimentos registrados desde el escáner en vivo (llegan por MQTT)
+    pendientes = leer_estado().pendientes
+    while pendientes:
+        agregar(pendientes.popleft(), notificar=False)
     items = inventario()
     cab1, cab2, cab3 = st.columns([2, 1, 1], vertical_alignment="center")
     cab1.markdown(f"#### {len(items)} producto{'s' if len(items) != 1 else ''} registrado{'s' if len(items) != 1 else ''}")
@@ -413,3 +436,7 @@ with tab_inv:
         if v2.button("Restablecer ejemplo", icon=":material/restart_alt:", use_container_width=True):
             items[:] = datos_de_ejemplo()
             st.rerun()
+
+
+with tab_inv:
+    panel_inventario()
