@@ -19,7 +19,7 @@ CSS = """
 html, body, .stApp, .stMarkdown, button, input, textarea { font-family: 'Plus Jakarta Sans', sans-serif !important; }
 .stApp { background: radial-gradient(1200px 600px at 10% -10%, #DCE6FF 0%, transparent 60%),
                      radial-gradient(900px 500px at 110% 10%, #EDE7FF 0%, transparent 55%), #F3F5FA; }
-.block-container { padding-top: 1.2rem; max-width: 1180px; }
+.block-container { padding-top: 4.2rem; max-width: 1180px; }
 [data-testid="stToolbarActions"], footer { display: none !important; }
 h1, h2, h3, h4 { color: #14161F; letter-spacing: -0.02em; }
 
@@ -95,7 +95,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] { border-radius:26px !important;
 
 def html(contenido: str):
     """Muestra HTML sin sangrías (Markdown convierte las sangrías en bloques de código)."""
-    limpio = "".join(linea.strip() for linea in contenido.splitlines())
+    limpio = " ".join(linea.strip() for linea in contenido.splitlines() if linea.strip())
     st.markdown(limpio, unsafe_allow_html=True)
 
 
