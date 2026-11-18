@@ -22,13 +22,22 @@ DURACION_DIAS = {
     "leche": 5, "huevos": 21, "queso": 14, "yogur": 10, "jamon": 5,
     "carne": 2, "pollo": 2, "fruta": 7, "manzana": 20, "banano": 5,
     "verdura": 5, "tomate": 7, "lechuga": 5, "zanahoria": 21,
+    "naranja": 14, "limon": 21, "fresa": 4, "pina": 5, "pimenton": 7, "pepino": 7,
+    "brocoli": 5, "coliflor": 7, "repollo": 14, "champinon": 5, "calabacin": 7, "maiz": 4,
+    "agua": 60, "gaseosa": 30, "pizza": 3, "helado": 60, "salchicha": 7, "pan": 4, "pasta": 3,
 }
 # Ícono (Material Symbols) para cada alimento
 ICONOS = {
     "leche": "water_full", "yogur": "icecream", "queso": "lunch_dining", "huevos": "egg",
     "jamon": "lunch_dining", "carne": "kebab_dining", "pollo": "set_meal", "fruta": "nutrition",
     "manzana": "nutrition", "banano": "nutrition", "verdura": "eco", "tomate": "eco",
-    "lechuga": "eco", "zanahoria": "eco",
+    "lechuga": "eco", "zanahoria": "eco", "naranja": "nutrition", "limon": "nutrition",
+    "fresa": "nutrition", "pina": "nutrition", "granada": "nutrition", "pimenton": "eco",
+    "pepino": "eco", "brocoli": "eco", "coliflor": "eco", "repollo": "eco", "champinon": "eco",
+    "calabacin": "eco", "maiz": "eco", "ahuyama": "eco", "agua": "water_bottle",
+    "gaseosa": "local_drink", "vino": "wine_bar", "cerveza": "sports_bar", "pizza": "local_pizza",
+    "helado": "icecream", "salchicha": "kebab_dining", "hamburguesa": "lunch_dining",
+    "pan": "bakery_dining", "pasta": "ramen_dining", "sopa": "soup_kitchen",
 }
 CLASES_VACIAS = {"nada", "vacio", "fondo", "ninguno"}
 
@@ -140,41 +149,74 @@ def responder(texto: str):
         pass   # si no hay internet para la voz, al menos queda el texto
 
 
-# ---------- Modelo de Teachable Machine ----------
-@st.cache_resource
+# ---------- Reconocimiento de alimentos ----------
+# 1) Si existe modelo/keras_model.h5 (Teachable Machine), se usa ese.
+# 2) Si no, se usa MobileNetV2 preentrenado con ImageNet (1000 categorías),
+#    filtrando solo las categorías de alimentos y traduciéndolas al español.
+IMAGENET_ES = {
+    "Granny_Smith": "Manzana", "banana": "Banano", "orange": "Naranja", "lemon": "Limón",
+    "strawberry": "Fresa", "pineapple": "Piña", "pomegranate": "Granada", "fig": "Higo",
+    "custard_apple": "Guanábana", "jackfruit": "Yaca", "bell_pepper": "Pimentón",
+    "cucumber": "Pepino", "broccoli": "Brócoli", "cauliflower": "Coliflor",
+    "head_cabbage": "Repollo", "mushroom": "Champiñón", "zucchini": "Calabacín",
+    "corn": "Maíz", "ear": "Maíz", "artichoke": "Alcachofa", "butternut_squash": "Ahuyama",
+    "acorn_squash": "Ahuyama", "spaghetti_squash": "Ahuyama", "cardoon": "Verdura",
+    "water_bottle": "Agua", "pop_bottle": "Gaseosa", "wine_bottle": "Vino", "beer_bottle": "Cerveza",
+    "milk_can": "Leche", "pizza": "Pizza", "ice_cream": "Helado", "hotdog": "Salchicha",
+    "cheeseburger": "Hamburguesa", "French_loaf": "Pan", "bagel": "Pan", "pretzel": "Pan",
+    "meat_loaf": "Carne", "carbonara": "Pasta", "guacamole": "Guacamole", "burrito": "Burrito",
+    "potpie": "Pastel", "trifle": "Postre", "mashed_potato": "Puré", "consomme": "Sopa",
+    "hot_pot": "Sopa", "eggnog": "Leche", "plate": None, "dough": "Masa",
+}
+
+
+@st.cache_resource(show_spinner="Cargando modelo de reconocimiento…")
 def cargar_modelo():
+    """Devuelve (tipo, modelo, etiquetas). tipo = 'tm', 'general' o None."""
     ruta_modelo = CARPETA_MODELO / "keras_model.h5"
     ruta_labels = CARPETA_MODELO / "labels.txt"
-    if not ruta_modelo.exists() or not ruta_labels.exists():
-        return None, None, "El modelo de reconocimiento aún no está cargado. Mientras tanto, escribe el nombre del alimento."
     try:
-        from tensorflow.keras.layers import DepthwiseConv2D
-        from tensorflow.keras.models import load_model
+        if ruta_modelo.exists() and ruta_labels.exists():
+            from tensorflow.keras.layers import DepthwiseConv2D
+            from tensorflow.keras.models import load_model
 
-        class DepthwiseConv2DCompat(DepthwiseConv2D):
-            # Teachable Machine guarda un parámetro 'groups' que Keras nuevo no acepta
-            def __init__(self, *args, **kwargs):
-                kwargs.pop("groups", None)
-                super().__init__(*args, **kwargs)
+            class DepthwiseConv2DCompat(DepthwiseConv2D):
+                # Teachable Machine guarda un parámetro 'groups' que Keras nuevo no acepta
+                def __init__(self, *args, **kwargs):
+                    kwargs.pop("groups", None)
+                    super().__init__(*args, **kwargs)
 
-        modelo = load_model(str(ruta_modelo), compile=False,
-                            custom_objects={"DepthwiseConv2D": DepthwiseConv2DCompat})
-    except Exception as e:
-        return None, None, f"No se pudo cargar el modelo: {e}"
-    etiquetas = []
-    for linea in ruta_labels.read_text(encoding="utf-8").splitlines():
-        partes = linea.strip().split(" ", 1)     # formato "0 Leche"
-        if partes and partes[0]:
-            etiquetas.append(partes[-1])
-    return modelo, etiquetas, None
+            modelo = load_model(str(ruta_modelo), compile=False,
+                                custom_objects={"DepthwiseConv2D": DepthwiseConv2DCompat})
+            etiquetas = [l.strip().split(" ", 1)[-1]
+                         for l in ruta_labels.read_text(encoding="utf-8").splitlines() if l.strip()]
+            return "tm", modelo, etiquetas
+
+        from tensorflow.keras.applications import MobileNetV2
+        return "general", MobileNetV2(weights="imagenet"), None
+    except Exception:
+        return None, None, None
 
 
-def clasificar(imagen: Image.Image, modelo, etiquetas):
+def reconocer(imagen: Image.Image):
+    """Devuelve (alimento o None, confianza)."""
+    tipo, modelo, etiquetas = cargar_modelo()
     imagen = ImageOps.fit(imagen.convert("RGB"), (224, 224), Image.Resampling.LANCZOS)
-    arreglo = (np.asarray(imagen, dtype=np.float32) / 127.5) - 1
-    pred = modelo.predict(arreglo[np.newaxis, ...], verbose=0)[0]
-    i = int(np.argmax(pred))
-    return etiquetas[i], float(pred[i])
+    arreglo = ((np.asarray(imagen, dtype=np.float32) / 127.5) - 1)[np.newaxis, ...]
+
+    if tipo == "tm":
+        pred = modelo.predict(arreglo, verbose=0)[0]
+        i = int(np.argmax(pred))
+        clase = etiquetas[i]
+        return (None if sin_tildes(clase) in CLASES_VACIAS else clase), float(pred[i])
+
+    from tensorflow.keras.applications.mobilenet_v2 import decode_predictions
+    pred = modelo.predict(arreglo, verbose=0)
+    for _, nombre, prob in decode_predictions(pred, top=5)[0]:
+        alimento = IMAGENET_ES.get(nombre)
+        if alimento and prob >= 0.05:
+            return alimento, float(prob)
+    return None, 0.0
 
 
 # =====================================================================
@@ -184,28 +226,45 @@ tab_cam, tab_voz, tab_inv = st.tabs([":material/photo_camera: Cámara",
 
 # ---------- Cámara ----------
 with tab_cam:
-    modelo, etiquetas, error = cargar_modelo()
     izq, der = st.columns([1.2, 1], gap="large")
     with izq:
-        foto = st.camera_input("Ubica el alimento frente a la cámara y toma la foto")
+        origen = st.segmented_control("Origen de la imagen", ["Cámara", "Subir foto"], default="Cámara",
+                                      label_visibility="collapsed")
+        if origen == "Subir foto":
+            foto = st.file_uploader("Sube una foto del alimento", type=["jpg", "jpeg", "png", "webp"])
+            if foto is not None:
+                st.image(foto, use_container_width=True)
+        else:
+            foto = st.camera_input("Ubica el alimento frente a la cámara y toma la foto")
     with der:
+        tipo_modelo = cargar_modelo()[0]
         if foto is None:
+            fuente = ("Modelo propio entrenado en Teachable Machine" if tipo_modelo == "tm"
+                      else "Modelo MobileNetV2 preentrenado (ImageNet)")
             html(f"""
             <div class="card" style="text-align:center;padding:2rem">
               {ic('center_focus_strong', 44, GRIS)}
               <div class="valor" style="font-size:1.15rem;margin-top:.6rem">Reconocimiento de alimentos</div>
-              <div class="etiqueta">Toma una foto y el modelo identificará el producto para registrarlo.</div>
+              <div class="etiqueta">Toma o sube una foto y el modelo identificará el producto para registrarlo.</div>
+              <div style="margin-top:.8rem">{estado(fuente, AZUL, "#E8EFFF")}</div>
             </div>""")
-        elif modelo is None:
-            st.info(error, icon=":material/info:")
+        elif tipo_modelo is None:
+            st.info("El modelo de reconocimiento no está disponible. Escribe el nombre del alimento.",
+                    icon=":material/info:")
             manual = st.text_input("Nombre del alimento")
             if st.button("Agregar al inventario", icon=":material/add:", type="primary",
                          key="manual") and manual:
                 responder(agregar(manual))
         else:
-            clase, confianza = clasificar(Image.open(foto), modelo, etiquetas)
-            if sin_tildes(clase) in CLASES_VACIAS:
-                st.info("No se detectó ningún alimento. Acércalo a la cámara.", icon=":material/info:")
+            with st.spinner("Analizando imagen…"):
+                clase, confianza = reconocer(Image.open(foto))
+            if clase is None:
+                st.info("No se identificó un alimento. Acércalo a la cámara o prueba con otra foto.",
+                        icon=":material/info:")
+                manual = st.text_input("Si lo prefieres, escribe el nombre del alimento")
+                if st.button("Agregar al inventario", icon=":material/add:", type="primary",
+                             key="manual2") and manual:
+                    responder(agregar(manual))
             else:
                 icono = ICONOS.get(sin_tildes(clase), "kitchen")
                 html(f"""
@@ -215,8 +274,8 @@ with tab_cam:
                   <div class="valor">{clase}</div>
                   <div class="etiqueta">Confianza del modelo: {confianza:.0%}</div>
                 </div>""")
-                st.progress(confianza)
-                if confianza < 0.6:
+                st.progress(min(confianza, 1.0))
+                if confianza < 0.4:
                     st.caption("Confianza baja. Mejora la iluminación o acerca el producto.")
                 c1, c2 = st.columns(2)
                 if c1.button("Agregar", icon=":material/add:", type="primary", use_container_width=True):
