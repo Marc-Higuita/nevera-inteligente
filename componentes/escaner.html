@@ -61,6 +61,7 @@
     <div class="fila"><span>CONFIANZA</span><span id="conf">0%</span></div>
     <div class="lista" id="lista"></div>
     <button class="btn verde" id="registrar" disabled>Registrar en la nevera</button>
+    <button class="btn oscuro" id="sonido">Sonido: activado</button>
     <button class="btn oscuro" id="detener" disabled>Detener</button>
     <div class="aviso" id="aviso"></div>
   </div>
@@ -79,6 +80,30 @@ const ES = {
   bottle: "Bebida", cup: "Taza", bowl: "Recipiente", "wine glass": "Copa",
 };
 const VERDE = "#39FF6A";
+// ---------- Sonidos generados con Web Audio (sin archivos) ----------
+let audioCtx = null, sonidoActivo = true;
+function sonar(notas) {
+  if (!sonidoActivo) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    let t = audioCtx.currentTime;
+    notas.forEach(([frec, dur, tipo = "sine", vol = 0.15]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = tipo; o.frequency.value = frec;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + dur + 0.02);
+      t += dur * 0.9;
+    });
+  } catch (e) {}
+}
+const SONIDOS = {
+  tic: [[880, 0.05, "square", 0.05]],
+  blip: [[1250, 0.07, "sine", 0.12]],
+  confirmar: [[660, 0.09], [990, 0.16]],
+  exito: [[523, 0.08], [659, 0.08], [784, 0.18]],
+};
+
 const $ = id => document.getElementById(id);
 const video = $("video"), capa = $("capa"), ctx = capa.getContext("2d");
 const zoom = $("zoom"), zctx = zoom.getContext("2d");
@@ -103,10 +128,15 @@ $("iniciar").onclick = async () => {
     $("estado").textContent = "Cargando modelo de detección…";
     modelo = modelo || await cocoSsd.load({ base: "lite_mobilenet_v2" });
     $("portada").style.display = "none";
-    $("detener").disabled = false; activo = true; ciclo();
+    $("detener").disabled = false; activo = true; sonar(SONIDOS.confirmar); ciclo();
   } catch (e) {
     $("estado").textContent = "No fue posible iniciar: " + e.message;
   }
+};
+$("sonido").onclick = () => {
+  sonidoActivo = !sonidoActivo;
+  $("sonido").textContent = "Sonido: " + (sonidoActivo ? "activado" : "silenciado");
+  if (sonidoActivo) sonar(SONIDOS.tic);
 };
 $("detener").onclick = () => {
   activo = false; if (stream) stream.getTracks().forEach(t => t.stop());
@@ -121,6 +151,7 @@ $("registrar").onclick = () => {
   if (cliente && cliente.connected) {
     cliente.publish(TOPIC_INV, "AGREGAR:" + nombre);
     cliente.publish(TOPIC_CMD, "MENSAJE:Detectado: " + nombre);
+    sonar(SONIDOS.exito);
     $("aviso").textContent = "Registrado: " + nombre + " (inventario y pantalla de la nevera)";
   } else {
     $("aviso").textContent = "Sin conexión MQTT. Intenta de nuevo en unos segundos.";
@@ -147,7 +178,11 @@ function idDe(clase) {
   return ids[clase];
 }
 
+let vistos = new Set();
 function dibujar(preds) {
+  const ahoraVistos = new Set(preds.map(p => p.class));
+  if ([...ahoraVistos].some(c => !vistos.has(c))) sonar(SONIDOS.blip);
+  vistos = ahoraVistos;
   const W = capa.width, H = capa.height, k = W / 1280;
   ctx.clearRect(0, 0, W, H);
 

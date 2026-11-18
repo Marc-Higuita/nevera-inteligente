@@ -31,9 +31,10 @@ controlar el enfriamiento y llevar el inventario de alimentos con la **cámara**
 
 - **Escáner en vivo:** detección de alimentos en tiempo real en el navegador (TensorFlow.js, COCO-SSD) con interfaz tipo HUD; registra el alimento por MQTT.
 - **Reconocimiento por foto:** modelo CLIP que identifica 34 alimentos (incluidos leche, huevos y queso) desde la cámara, un archivo o un enlace.
-- **Control por gestos:** MediaPipe reconoce gestos de la mano y envía órdenes al ESP32 (mano abierta = silenciar, pulgar arriba/abajo = enfriamiento, V = automático, índice = probar alarma).
+- **Control por gestos:** MediaPipe reconoce gestos de la mano y envía órdenes al ESP32 (mano abierta = silenciar, pulgar arriba/abajo = enfriamiento, dedos en V = automático, índice = probar alarma).
 - **Alertas al celular:** notificaciones push con ntfy cuando se activa la alarma.
 - **Recetas anti-desperdicio:** sugiere recetas que usan primero los alimentos por vencer; también por voz ("qué puedo cocinar").
+- **Sonidos:** confirmaciones, detecciones y sirena de alarma generadas con Web Audio.
 - **Energía:** minutos de puerta abierta y de enfriamiento, Wh y costo estimado del día.
 
 ## Estructura

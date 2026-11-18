@@ -154,3 +154,37 @@ def anillo(valor, minimo, maximo, unidad, etiqueta, color=AZUL):
 
 def estado(texto: str, color: str, fondo: str) -> str:
     return f'<span class="estado" style="color:{color};background:{fondo}">{texto}</span>'
+
+
+SONIDOS_JS = {
+    "confirmar": "[[660,0.09],[990,0.16]]",
+    "error": "[[300,0.18,'square',0.08],[220,0.25,'square',0.08]]",
+    "alarma": "[[880,0.22,'sawtooth',0.12],[620,0.22,'sawtooth',0.12],[880,0.22,'sawtooth',0.12],"
+              "[620,0.22,'sawtooth',0.12],[880,0.22,'sawtooth',0.12],[620,0.3,'sawtooth',0.12]]",
+}
+
+
+def sonido(tipo: str = "confirmar"):
+    """Reproduce un sonido corto en el navegador (Web Audio, sin archivos)."""
+    import time
+
+    import streamlit.components.v1 as components
+
+    notas = SONIDOS_JS.get(tipo, SONIDOS_JS["confirmar"])
+    components.html(
+        f"""<script>
+        // {time.time()}  (marca para que el sonido se reproduzca en cada llamada)
+        try {{
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          let t = ctx.currentTime;
+          {notas}.forEach(([f, d, tipo = 'sine', v = 0.15]) => {{
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = tipo; o.frequency.value = f;
+            g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+            o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + d + 0.02); t += d * 0.9;
+          }});
+        }} catch (e) {{}}
+        </script>""",
+        height=0,
+    )

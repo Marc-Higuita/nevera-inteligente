@@ -55,6 +55,7 @@
     <div id="guia"></div>
     <div class="rotulo" style="margin-top:4px">ÚLTIMAS ÓRDENES</div>
     <div class="registro" id="registro">Sin órdenes enviadas.</div>
+    <button class="btn oscuro" id="sonido">Sonido: activado</button>
     <button class="btn oscuro" id="detener" disabled>Detener</button>
   </div>
 </div>
@@ -72,14 +73,39 @@ const GESTOS = {
   Open_Palm:   { icono: "front_hand", nombre: "Mano abierta", accion: "Silenciar alarma", orden: "SILENCIAR" },
   Thumb_Up:    { icono: "thumb_up", nombre: "Pulgar arriba", accion: "Encender enfriamiento", orden: "COMPRESOR_ON" },
   Thumb_Down:  { icono: "thumb_down", nombre: "Pulgar abajo", accion: "Apagar enfriamiento", orden: "COMPRESOR_OFF" },
-  Victory:     { icono: "sign_language", nombre: "Victoria (V)", accion: "Modo automático", orden: "MODO_AUTO" },
+  Victory:     { icono: "sign_language", nombre: "Dedos en V", accion: "Modo automático", orden: "MODO_AUTO" },
   Pointing_Up: { icono: "touch_app", nombre: "Índice arriba", accion: "Probar alarma sonora", orden: "PROBAR_ALARMA" },
+};
+
+// ---------- Sonidos generados con Web Audio (sin archivos) ----------
+let audioCtx = null, sonidoActivo = true;
+function sonar(notas) {
+  if (!sonidoActivo) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    let t = audioCtx.currentTime;
+    notas.forEach(([frec, dur, tipo = "sine", vol = 0.15]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = tipo; o.frequency.value = frec;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + dur + 0.02);
+      t += dur * 0.9;
+    });
+  } catch (e) {}
+}
+const SONIDOS = {
+  tic: [[880, 0.05, "square", 0.05]],
+  blip: [[1250, 0.07, "sine", 0.12]],
+  confirmar: [[660, 0.09], [990, 0.16]],
+  exito: [[523, 0.08], [659, 0.08], [784, 0.18]],
 };
 
 const $ = id => document.getElementById(id);
 $("guia").innerHTML = Object.entries(GESTOS).map(([k, g]) =>
   `<div class="gesto" id="g-${k}" style="margin-bottom:6px"><span class="ms">${g.icono}</span>
-   <div><b>${g.nombre}</b>${g.accion}</div></div>`).join("");
+   <div><b>${g.nombre}</b>${g.accion}</div></div>`).join("") +
+  `<div style="font-size:.64rem;color:#6E8580;margin:2px 2px 4px">Dedos en V: índice y corazón levantados y separados.</div>`;
 
 const video = $("video"), lienzo = $("lienzo"), ctx = lienzo.getContext("2d");
 let reconocedor = null, stream = null, activo = false, cliente = null;
@@ -108,8 +134,14 @@ $("iniciar").onclick = async () => {
     $("estado").textContent = "Cargando modelo de gestos…";
     reconocedor = reconocedor || await crearReconocedor();
     $("portada").style.display = "none"; $("detener").disabled = false; activo = true;
+    sonar(SONIDOS.exito);
     requestAnimationFrame(ciclo);
   } catch (e) { $("estado").textContent = "No fue posible iniciar: " + e.message; }
+};
+$("sonido").onclick = () => {
+  sonidoActivo = !sonidoActivo;
+  $("sonido").textContent = "Sonido: " + (sonidoActivo ? "activado" : "silenciado");
+  if (sonidoActivo) sonar(SONIDOS.tic);
 };
 $("detener").onclick = () => {
   activo = false; if (stream) stream.getTracks().forEach(t => t.stop());
@@ -123,6 +155,7 @@ function enviar(clave) {
   const hora = new Date().toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" });
   if (cliente && cliente.connected) {
     cliente.publish(TOPIC_CMD, g.orden);
+    sonar(SONIDOS.confirmar);
     enviados.unshift(`${hora} · ${g.accion}`);
   } else {
     enviados.unshift(`${hora} · Sin conexión MQTT`);
@@ -150,7 +183,7 @@ function ciclo() {
 
     // Gesto sostenido -> orden
     const ahora = performance.now();
-    if (clave !== gestoActual) { gestoActual = clave; desde = ahora; }
+    if (clave !== gestoActual) { gestoActual = clave; desde = ahora; if (clave) sonar(SONIDOS.tic); }
     document.querySelectorAll(".gesto").forEach(el => el.classList.toggle("activo", el.id === "g-" + clave));
     if (clave && ahora - desde > SOSTENER_MS && ahora - ultimoEnvio > ESPERA_MS) {
       enviar(clave); ultimoEnvio = ahora; desde = ahora;

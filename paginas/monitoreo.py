@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 from pathlib import Path
 
 from estilo import (AMBAR, AZUL, AZUL_SUAVE, GRIS, ROJO, VERDE, anillo, barra_superior,
-                    encabezado, estado, html, ic)
+                    encabezado, estado, html, ic, sonido)
 from mqtt_utils import (BROKER_WS, NTFY_TEMA, PERDIDA_PUERTA_WH_MIN, POTENCIA_COMPRESOR_W, TARIFA_COP_KWH,
                         TOPIC_CMD, energia_hoy, enviar_alerta, enviar_orden, leer_estado)
 
@@ -18,7 +18,9 @@ encabezado("Monitoreo", "Estado de la nevera en tiempo real y control remoto del
 def ordenar(orden: str, texto: str):
     if enviar_orden(orden):
         st.toast(texto, icon=":material/check_circle:")
+        sonido("confirmar")
     else:
+        sonido("error")
         st.toast("No fue posible enviar la orden. Verifica la conexión.", icon=":material/error:")
 
 
@@ -40,6 +42,14 @@ def panel_en_vivo():
     if time.time() - est.ultima_hora > 10:
         st.warning(f"Último dato recibido hace {time.time() - est.ultima_hora:.0f} s.",
                    icon=":material/schedule:")
+
+    # Sirena en la página cuando la alarma se activa (una vez por evento)
+    if d.get("alarma") and not d.get("silenciada"):
+        if not st.session_state.get("sirena_sonada"):
+            st.session_state["sirena_sonada"] = True
+            sonido("alarma")
+    else:
+        st.session_state["sirena_sonada"] = False
 
     if d.get("alarma"):
         silencio = " · Alarma silenciada" if d.get("silenciada") else ""
@@ -178,7 +188,7 @@ def html_gestos():
     return ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD).replace("__BROKER_WS__", BROKER_WS)
 
 
-components.html(html_gestos(), height=480, scrolling=False)
+components.html(html_gestos(), height=560, scrolling=False)
 
 # ---------- Alertas al celular ----------
 st.write("")
