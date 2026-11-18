@@ -1,0 +1,8 @@
+streamlit>=1.40
+paho-mqtt>=2.0
+pandas
+numpy
+pillow
+gTTS
+SpeechRecognition
+tensorflow-cpu>=2.16,<2.21
