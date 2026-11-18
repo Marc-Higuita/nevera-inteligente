@@ -31,7 +31,7 @@ controlar el enfriamiento y llevar el inventario de alimentos con la **cámara**
 
 - **Escáner en vivo:** detección de alimentos en tiempo real en el navegador (TensorFlow.js, COCO-SSD) con interfaz tipo HUD; registra el alimento por MQTT.
 - **Reconocimiento por foto:** modelo CLIP que identifica 34 alimentos (incluidos leche, huevos y queso) desde la cámara, un archivo o un enlace.
-- **Control por gestos:** MediaPipe reconoce gestos de la mano y envía órdenes al ESP32 (mano abierta = silenciar, pulgar arriba/abajo = enfriamiento, dedos en V = automático, índice = probar alarma).
+- **Control por gestos (termostato):** MediaPipe reconoce gestos de la mano: pulgar arriba/abajo sube o baja 1 °C la temperatura objetivo, mano abierta silencia la alarma, dedos en V activa el modo automático e índice arriba lee el estado en voz alta. Cada gesto tiene su propio sonido.
 - **Alertas al celular:** notificaciones push con ntfy cuando se activa la alarma.
 - **Recetas anti-desperdicio:** sugiere recetas que usan primero los alimentos por vencer; también por voz ("qué puedo cocinar").
 - **Sonidos:** confirmaciones, detecciones y sirena de alarma generadas con Web Audio.
@@ -78,8 +78,10 @@ streamlit run app.py
 
 | Orden | Efecto en el ESP32 |
 |---|---|
+| `OBJETIVO_MAS` / `OBJETIVO_MENOS` | Sube o baja 1 °C la temperatura objetivo (termostato) |
+| `OBJETIVO:3.5` | Fija la temperatura objetivo |
 | `COMPRESOR_ON` / `COMPRESOR_OFF` | Prende o apaga el enfriamiento (pasa a modo manual) |
-| `MODO_AUTO` / `MODO_MANUAL` | En automático, enfría solo si la temperatura supera el umbral |
+| `MODO_AUTO` / `MODO_MANUAL` | En automático, enfría hasta alcanzar la temperatura objetivo |
 | `UMBRAL:6.5` | Cambia la temperatura máxima permitida |
 | `SILENCIAR` | Silencia la alarma actual |
 | `PROBAR_ALARMA` | Hace sonar el buzzer 1 segundo |

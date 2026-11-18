@@ -9,7 +9,7 @@ from pathlib import Path
 from estilo import (AMBAR, AZUL, AZUL_SUAVE, GRIS, ROJO, VERDE, anillo, barra_superior,
                     encabezado, estado, html, ic, sonido)
 from mqtt_utils import (BROKER_WS, NTFY_TEMA, PERDIDA_PUERTA_WH_MIN, POTENCIA_COMPRESOR_W, TARIFA_COP_KWH,
-                        TOPIC_CMD, energia_hoy, enviar_alerta, enviar_orden, leer_estado)
+                        TOPIC_CMD, TOPIC_DATOS, energia_hoy, enviar_alerta, enviar_orden, leer_estado)
 
 barra_superior(leer_estado().conectado)
 encabezado("Monitoreo", "Estado de la nevera en tiempo real y control remoto del enfriamiento.", "thermostat")
@@ -57,7 +57,7 @@ def panel_en_vivo():
 
     temp_color = ROJO if d["temp"] > d["umbral"] else AZUL
     c1, c2, c3, c4 = st.columns([1.15, 1.15, 1, 1], gap="medium")
-    etiqueta_temp = "Temperatura · máx. %.1f °C" % d["umbral"]
+    etiqueta_temp = "Objetivo %.0f °C · máx. %.1f °C" % (d.get("objetivo", 4), d["umbral"])
     with c1:
         html(f'<div class="card">{anillo(d["temp"], -5, 15, "°C", etiqueta_temp, temp_color)}</div>')
     with c2:
@@ -124,7 +124,21 @@ panel_en_vivo()
 # ---------- Controles (Streamlit -> ESP32) ----------
 st.write("")
 st.markdown("#### Controles")
-col1, col2, col3 = st.columns(3, gap="medium")
+col0, col1, col2, col3 = st.columns(4, gap="small")
+
+with col0:
+    with st.container(border=True):
+        st.markdown("**:material/thermostat: Termostato**")
+        actual = (leer_estado().ultimo or {}).get("objetivo", 4.0)
+        st.markdown(f"<div style='font-size:2.2rem;font-weight:800;text-align:center;margin:.2rem 0'>"
+                    f"{actual:.0f} °C</div><div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>"
+                    f"Temperatura objetivo</div>", unsafe_allow_html=True)
+        b1, b2 = st.columns(2)
+        if b1.button("", icon=":material/remove:", key="obj_menos", use_container_width=True,
+                     help="Bajar 1 °C"):
+            ordenar("OBJETIVO_MENOS", "Objetivo: 1 °C menos")
+        if b2.button("", icon=":material/add:", key="obj_mas", use_container_width=True, help="Subir 1 °C"):
+            ordenar("OBJETIVO_MAS", "Objetivo: 1 °C más")
 
 with col1:
     with st.container(border=True):
@@ -179,12 +193,13 @@ with st.popover("Cómo se calcula la energía", icon=":material/info:"):
 # ---------- Control por gestos ----------
 st.write("")
 st.markdown("#### Control por gestos")
-st.caption("Sostén un gesto frente a la cámara durante un segundo para enviar la orden a la nevera.")
+st.caption("Usa la mano como termostato: pulgar arriba o abajo cambia la temperatura objetivo. Sostén cada gesto un segundo.")
 
 
 def html_gestos():
     ruta = Path(__file__).resolve().parent.parent / "componentes" / "gestos.html"
-    return ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD).replace("__BROKER_WS__", BROKER_WS)
+    return (ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD)
+            .replace("__TOPIC_DATOS__", TOPIC_DATOS).replace("__BROKER_WS__", BROKER_WS))
 
 
 components.html(html_gestos(), height=560, scrolling=False)

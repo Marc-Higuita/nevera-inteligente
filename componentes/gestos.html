@@ -42,7 +42,7 @@
     <canvas id="lienzo"></canvas>
     <div class="portada" id="portada">
       <h3>Control de la nevera con gestos</h3>
-      <p>Muestra la mano a la cámara y sostén un gesto durante un segundo para enviar la orden al ESP32.
+      <p>Usa la mano como termostato: sube o baja la temperatura objetivo de la nevera. Sostén cada gesto un segundo.
          El reconocimiento se ejecuta en este navegador con MediaPipe.</p>
       <button class="btn verde" id="iniciar">Activar control por gestos</button>
       <p id="estado"></p>
@@ -52,6 +52,7 @@
   <div class="panel">
     <div class="fila"><span class="rotulo">GESTOS DISPONIBLES</span>
       <span class="pill"><i id="luz"></i><span id="mqtt">MQTT</span></span></div>
+    <div class="registro" id="lectura" style="min-height:0;border:1px solid #1C262E;border-radius:12px;padding:8px 10px">Esperando datos de la nevera…</div>
     <div id="guia"></div>
     <div class="rotulo" style="margin-top:4px">ÚLTIMAS ÓRDENES</div>
     <div class="registro" id="registro">Sin órdenes enviadas.</div>
@@ -65,24 +66,38 @@
 import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 const { GestureRecognizer, FilesetResolver } = vision;
 
-const TOPIC_CMD = "__TOPIC_CMD__", BROKER_WS = "__BROKER_WS__";
+const TOPIC_CMD = "__TOPIC_CMD__", TOPIC_DATOS = "__TOPIC_DATOS__", BROKER_WS = "__BROKER_WS__";
+let datos = null;   // última lectura del ESP32 (para leer el estado en voz alta)
 const VERDE = "#39FF6A", SOSTENER_MS = 1100, ESPERA_MS = 3000;
 
 // Gesto de MediaPipe -> acción sobre la nevera
 const GESTOS = {
-  Open_Palm:   { icono: "front_hand", nombre: "Mano abierta", accion: "Silenciar alarma", orden: "SILENCIAR" },
-  Thumb_Up:    { icono: "thumb_up", nombre: "Pulgar arriba", accion: "Encender enfriamiento", orden: "COMPRESOR_ON" },
-  Thumb_Down:  { icono: "thumb_down", nombre: "Pulgar abajo", accion: "Apagar enfriamiento", orden: "COMPRESOR_OFF" },
-  Victory:     { icono: "sign_language", nombre: "Dedos en V", accion: "Modo automático", orden: "MODO_AUTO" },
-  Pointing_Up: { icono: "touch_app", nombre: "Índice arriba", accion: "Probar alarma sonora", orden: "PROBAR_ALARMA" },
+  Thumb_Up:    { icono: "thumb_up", nombre: "Pulgar arriba", accion: "Subir 1 °C el objetivo", orden: "OBJETIVO_MAS",
+                 sonido: [[523, 0.09], [784, 0.16]] },
+  Thumb_Down:  { icono: "thumb_down", nombre: "Pulgar abajo", accion: "Bajar 1 °C el objetivo", orden: "OBJETIVO_MENOS",
+                 sonido: [[784, 0.09], [523, 0.16]] },
+  Open_Palm:   { icono: "front_hand", nombre: "Mano abierta", accion: "Silenciar alarma", orden: "SILENCIAR",
+                 sonido: [[440, 0.25, "triangle", 0.12]] },
+  Victory:     { icono: "sign_language", nombre: "Dedos en V", accion: "Modo automático", orden: "MODO_AUTO",
+                 sonido: [[523, 0.07], [659, 0.07], [784, 0.07], [1047, 0.16]] },
+  Pointing_Up: { icono: "record_voice_over", nombre: "Índice arriba", accion: "Leer el estado en voz alta", orden: null,
+                 sonido: [[1175, 0.1]] },
 };
 
 // ---------- Sonidos generados con Web Audio (sin archivos) ----------
 let audioCtx = null, sonidoActivo = true;
+// Chrome solo permite audio después de un clic: el contexto se crea y se reanuda en cada clic
+function desbloquearAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) {}
+}
+document.addEventListener("pointerdown", desbloquearAudio, true);
 function sonar(notas) {
   if (!sonidoActivo) return;
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    desbloquearAudio();
     let t = audioCtx.currentTime;
     notas.forEach(([frec, dur, tipo = "sine", vol = 0.15]) => {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -113,7 +128,13 @@ let gestoActual = null, desde = 0, ultimoEnvio = 0, enviados = [];
 
 try {
   cliente = mqtt.connect(BROKER_WS, { clientId: "gestos-" + Math.random().toString(16).slice(2, 8), reconnectPeriod: 4000 });
-  cliente.on("connect", () => { $("luz").style.background = VERDE; $("mqtt").textContent = "MQTT EN LÍNEA"; });
+  cliente.on("connect", () => { $("luz").style.background = VERDE; $("mqtt").textContent = "MQTT EN LÍNEA";
+                                 cliente.subscribe(TOPIC_DATOS); });
+  cliente.on("message", (t, m) => {
+    try { datos = JSON.parse(m.toString()); } catch (e) { return; }
+    $("lectura").innerHTML = `TEMP <b>${datos.temp.toFixed(1)} °C</b> · OBJETIVO <b>${datos.objetivo ?? "–"} °C</b><br>` +
+      `ENFRIAMIENTO <b>${datos.compresor ? "ENCENDIDO" : "APAGADO"}</b>` + (datos.alarma ? " · <b style='color:#FF5C5C'>ALARMA</b>" : "");
+  });
   cliente.on("close", () => { $("luz").style.background = "#5B6670"; $("mqtt").textContent = "MQTT SIN CONEXIÓN"; });
 } catch (e) { $("mqtt").textContent = "MQTT NO DISPONIBLE"; }
 
@@ -127,6 +148,7 @@ async function crearReconocedor() {
 }
 
 $("iniciar").onclick = async () => {
+  desbloquearAudio();
   try {
     $("estado").textContent = "Solicitando acceso a la cámara…";
     stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
@@ -150,12 +172,23 @@ $("detener").onclick = () => {
   $("detener").disabled = true;
 };
 
+function hablar(texto) {
+  if (!sonidoActivo || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(texto); u.lang = "es-CO"; u.rate = 1;
+  speechSynthesis.cancel(); setTimeout(() => speechSynthesis.speak(u), 250);
+}
+
 function enviar(clave) {
   const g = GESTOS[clave];
   const hora = new Date().toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" });
-  if (cliente && cliente.connected) {
+  sonar(g.sonido);
+  if (!g.orden) {            // Índice arriba: la app lee el estado en voz alta
+    hablar(datos ? `La nevera está a ${datos.temp.toFixed(1)} grados. La temperatura objetivo es ${datos.objetivo ?? 4} grados. ` +
+      `El enfriamiento está ${datos.compresor ? "encendido" : "apagado"}` + (datos.alarma ? ". Hay una alarma activa." : ".")
+      : "Todavía no hay datos de la nevera.");
+    enviados.unshift(`${hora} · ${g.accion}`);
+  } else if (cliente && cliente.connected) {
     cliente.publish(TOPIC_CMD, g.orden);
-    sonar(SONIDOS.confirmar);
     enviados.unshift(`${hora} · ${g.accion}`);
   } else {
     enviados.unshift(`${hora} · Sin conexión MQTT`);

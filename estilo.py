@@ -176,6 +176,7 @@ def sonido(tipo: str = "confirmar"):
         // {time.time()}  (marca para que el sonido se reproduzca en cada llamada)
         try {{
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          if (ctx.state === 'suspended') ctx.resume();
           let t = ctx.currentTime;
           {notas}.forEach(([f, d, tipo = 'sine', v = 0.15]) => {{
             const o = ctx.createOscillator(), g = ctx.createGain();

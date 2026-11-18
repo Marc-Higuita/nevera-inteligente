@@ -14,8 +14,10 @@
     Streamlit -> ESP32  : envia ordenes en TOPIC_CMD (texto)
 
   Ordenes que entiende (TOPIC_CMD):
+    OBJETIVO_MAS / OBJETIVO_MENOS  sube o baja 1 grado la temperatura objetivo (termostato)
+    OBJETIVO:3.5                   fija la temperatura objetivo
     COMPRESOR_ON / COMPRESOR_OFF   enciende o apaga el enfriamiento (modo manual)
-    MODO_AUTO / MODO_MANUAL        en automatico el compresor se prende solo si T > umbral
+    MODO_AUTO / MODO_MANUAL        en automatico el compresor enfria hasta llegar al objetivo
     UMBRAL:6.5                     cambia la temperatura maxima permitida
     SILENCIAR                      apaga el sonido de la alarma actual
     PROBAR_ALARMA                  suena el buzzer 1 segundo
@@ -52,7 +54,8 @@ DHTesp dhtSensor;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // ---------- Estado ----------
-float umbral = 5.0;                  // temperatura maxima (°C)
+float umbral = 5.0;                  // temperatura maxima permitida, activa la alarma (°C)
+float objetivo = 4.0;                // temperatura objetivo del termostato (°C)
 const unsigned long PUERTA_MAX_MS = 10000;   // 10 s con la puerta abierta = alarma
 bool compresor = false;
 bool modoAuto = true;
@@ -65,6 +68,17 @@ unsigned long mensajeHasta = 0;      // hasta cuando se muestra un mensaje en el
 float temp = 0, hum = 0;
 bool puertaAbierta = false;
 
+void mostrarObjetivo() {
+  // Muestra el nuevo objetivo en la LCD durante 3 segundos y aplica el termostato de inmediato
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Termostato");
+  lcd.setCursor(0, 1);
+  lcd.print("Objetivo: " + String(objetivo, 0) + " C");
+  mensajeHasta = millis() + 3000;
+  ultimoEnvio = 0;   // fuerza una actualizacion y publicacion inmediata
+}
+
 // ---------- Recepcion de ordenes desde Streamlit ----------
 void callback(char* topic, byte* payload, unsigned int length) {
   String msg = "";
@@ -73,7 +87,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Orden recibida: ");
   Serial.println(msg);
 
-  if (msg == "COMPRESOR_ON")       { modoAuto = false; compresor = true; }
+  if (msg == "OBJETIVO_MAS")        { objetivo = min(objetivo + 1.0f, 10.0f); modoAuto = true; mostrarObjetivo(); }
+  else if (msg == "OBJETIVO_MENOS") { objetivo = max(objetivo - 1.0f, -2.0f); modoAuto = true; mostrarObjetivo(); }
+  else if (msg.startsWith("OBJETIVO:")) { objetivo = msg.substring(9).toFloat(); modoAuto = true; mostrarObjetivo(); }
+  else if (msg == "COMPRESOR_ON")  { modoAuto = false; compresor = true; }
   else if (msg == "COMPRESOR_OFF") { modoAuto = false; compresor = false; }
   else if (msg == "MODO_AUTO")     { modoAuto = true; }
   else if (msg == "MODO_MANUAL")   { modoAuto = false; }
@@ -155,8 +172,12 @@ void actualizarLogica() {
   bool puertaMucho = puertaAbierta && (millis() - puertaAbiertaDesde > PUERTA_MAX_MS);
   bool muyCaliente = temp > umbral;
 
-  // Modo automatico: el compresor se prende si hace calor
-  if (modoAuto) compresor = muyCaliente;
+  // Modo automatico (termostato con histeresis de 0.5 °C):
+  // enfria si la temperatura esta por encima del objetivo y se apaga al alcanzarlo
+  if (modoAuto) {
+    if (temp > objetivo + 0.5) compresor = true;
+    else if (temp < objetivo - 0.5) compresor = false;
+  }
 
   // Alarma
   bool alarmaAntes = alarma;
@@ -185,10 +206,12 @@ void mostrarLCD() {
   if (millis() < mensajeHasta) return;      // hay un mensaje de Streamlit en pantalla
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("T:" + String(temp, 1) + "C H:" + String(hum, 0) + "%");
+  lcd.print("T:" + String(temp, 1) + "C Obj:" + String(objetivo, 0) + "C");
   lcd.setCursor(0, 1);
-  if (alarma) lcd.print("ALARMA!");
-  else        lcd.print(puertaAbierta ? "Puerta ABIERTA" : "Puerta cerrada");
+  if (alarma)             lcd.print("ALARMA!");
+  else if (puertaAbierta) lcd.print("Puerta ABIERTA");
+  else if (compresor)     lcd.print("Enfriando...");
+  else                    lcd.print("Puerta cerrada");
 }
 
 void publicarDatos() {
@@ -200,6 +223,7 @@ void publicarDatos() {
   doc["compresor"] = compresor;
   doc["modo_auto"] = modoAuto;
   doc["umbral"] = umbral;
+  doc["objetivo"] = objetivo;
   doc["alarma"] = alarma;
   doc["motivo"] = motivoAlarma;
   doc["silenciada"] = silenciada;

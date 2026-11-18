@@ -107,6 +107,12 @@ def interpretar(frase: str) -> str:
     if "alarma" in f and any(p in f for p in ("silencia", "calla", "apaga")):
         enviar_orden("SILENCIAR")
         return "Alarma silenciada."
+    if "temperatura" in f and any(p in f for p in ("sube", "subir", "aumenta", "mas alta")):
+        enviar_orden("OBJETIVO_MAS")
+        return "Subí un grado la temperatura objetivo."
+    if "temperatura" in f and any(p in f for p in ("baja", "bajar", "disminuye", "mas fria", "enfria")):
+        enviar_orden("OBJETIVO_MENOS")
+        return "Bajé un grado la temperatura objetivo."
     if any(p in f for p in ("enfriamiento", "compresor", "frio")):
         if any(p in f for p in ("apaga", "deten", "para ")):
             enviar_orden("COMPRESOR_OFF")
@@ -491,7 +497,7 @@ with tab_voz:
         comandos = [
             ("add_circle", "Agrega leche"), ("remove_circle", "Saca los huevos"),
             ("list_alt", "Qué hay en la nevera"), ("menu_book", "Qué puedo cocinar"),
-            ("device_thermostat", "Cuál es la temperatura"),
+            ("device_thermostat", "Cuál es la temperatura"), ("thermostat", "Baja la temperatura"),
             ("ac_unit", "Enciende el enfriamiento"), ("notifications_off", "Silencia la alarma"),
         ]
         filas = "".join(

@@ -82,10 +82,17 @@ const ES = {
 const VERDE = "#39FF6A";
 // ---------- Sonidos generados con Web Audio (sin archivos) ----------
 let audioCtx = null, sonidoActivo = true;
+function desbloquearAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) {}
+}
+document.addEventListener("pointerdown", desbloquearAudio, true);
 function sonar(notas) {
   if (!sonidoActivo) return;
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    desbloquearAudio();
     let t = audioCtx.currentTime;
     notas.forEach(([frec, dur, tipo = "sine", vol = 0.15]) => {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -120,6 +127,7 @@ try {
 
 // ---------- Inicio y parada ----------
 $("iniciar").onclick = async () => {
+  desbloquearAudio();
   try {
     $("estado").textContent = "Solicitando acceso a la cámara…";
     stream = await navigator.mediaDevices.getUserMedia({
