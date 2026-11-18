@@ -215,7 +215,8 @@ def cargar_modelo():
             emb = modelo.get_text_features(**entrada)
             emb = emb / emb.norm(dim=-1, keepdim=True)
         return modelo, procesador, emb, clases
-    except Exception:
+    except Exception as e:
+        st.session_state["error_modelo"] = f"{type(e).__name__}: {e}"
         return None
 
 
@@ -292,6 +293,7 @@ with tab_cam:
             if not cargado:
                 st.info("El modelo de reconocimiento no está disponible. Escribe el nombre del alimento.",
                         icon=":material/info:")
+                st.caption(st.session_state.get("error_modelo", ""))
             if clase is None:
                 if cargado:
                     st.info("No se identificó un alimento. Acércalo a la cámara o prueba con otra foto.",
