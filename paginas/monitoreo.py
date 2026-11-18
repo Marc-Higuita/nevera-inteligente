@@ -203,14 +203,14 @@ def tarjeta_puerta():
     st.markdown(f"<div class='valor' style='color:{color};text-align:center;margin:.35rem 0'>{titulo}</div>"
                 f"<div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>{sub}</div>",
                 unsafe_allow_html=True)
-    if d and "puerta_remota" not in d:
-        st.caption("Recarga la página y pulsa ▶ en Wokwi para usar este botón.")
-    elif abierta and not d.get("puerta_remota"):
-        st.caption("Se abrió con el interruptor de Wokwi: ciérrala desde allí.")
-    elif abierta:
-        if st.button("Cerrar puerta", icon=":material/door_front:", type="primary", use_container_width=True):
+    # El botón siempre está visible: abre o cierra según el estado actual
+    if abierta:
+        if st.button("Cerrar puerta", icon=":material/door_front:", type="primary", use_container_width=True,
+                     key="cerrar_puerta"):
             ordenar("PUERTA_CERRAR", "Puerta cerrada")
-    elif st.button("Abrir puerta", icon=":material/door_open:", use_container_width=True):
+        if not d.get("puerta_remota"):
+            st.caption("Si la abriste con el interruptor de Wokwi, ciérrala también allí.")
+    elif st.button("Abrir puerta", icon=":material/door_open:", use_container_width=True, key="abrir_puerta"):
         ordenar("PUERTA_ABRIR", "Puerta abierta (simulación)")
 
 

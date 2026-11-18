@@ -171,6 +171,7 @@ $("registrar").onclick = () => {
     cliente.publish(TOPIC_INV, "AGREGAR:" + nombre);
     cliente.publish(TOPIC_CMD, "MENSAJE:Detectado: " + nombre);
     sonar(SONIDOS.exito);
+    hablar(nombre + " registrado en la nevera");
     $("aviso").textContent = "Registrado: " + nombre + " (inventario y pantalla de la nevera)";
   } else {
     $("aviso").textContent = "Sin conexión MQTT. Intenta de nuevo en unos segundos.";
@@ -197,10 +198,27 @@ function idDe(clase) {
   return ids[clase];
 }
 
+// Voz: anuncia cada alimento nuevo que aparece (máximo una vez cada 6 s por alimento)
+const ultimoAnuncio = {};
+function hablar(texto) {
+  if (!sonidoActivo || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(texto); u.lang = "es-CO"; u.rate = 1.05;
+  speechSynthesis.cancel(); setTimeout(() => speechSynthesis.speak(u), 150);
+}
+
 let vistos = new Set();
 function dibujar(preds) {
   const ahoraVistos = new Set(preds.map(p => p.class));
-  if ([...ahoraVistos].some(c => !vistos.has(c))) sonar(SONIDOS.blip);
+  const nuevos = [...ahoraVistos].filter(c => !vistos.has(c));
+  if (nuevos.length) {
+    sonar(SONIDOS.blip);
+    const ahora = performance.now();
+    const anunciar = nuevos.filter(c => !ultimoAnuncio[c] || ahora - ultimoAnuncio[c] > 6000);
+    if (anunciar.length) {
+      anunciar.forEach(c => ultimoAnuncio[c] = ahora);
+      hablar("Escaneé " + anunciar.map(c => ES[c].toLowerCase()).join(" y "));
+    }
+  }
   vistos = ahoraVistos;
   const W = capa.width, H = capa.height, k = W / 1280;
   ctx.clearRect(0, 0, W, H);
