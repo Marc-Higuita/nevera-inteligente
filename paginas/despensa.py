@@ -41,7 +41,8 @@ def sin_tildes(texto: str) -> str:
 # ---------- Inventario compartido ----------
 @st.cache_resource
 def inventario():
-    return []   # lista de dicts {alimento, fecha}
+    """Lista compartida de alimentos: dicts {alimento, fecha con zona horaria}."""
+    return []
 
 
 def agregar(alimento: str):
