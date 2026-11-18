@@ -10,7 +10,7 @@ import streamlit as st
 from PIL import Image, ImageOps
 
 from estilo import AMBAR, AZUL, GRIS, ROJO, VERDE, barra_superior, encabezado, estado, html, ic
-from mqtt_utils import enviar_orden, leer_estado
+from mqtt_utils import ZONA, enviar_orden, leer_estado
 
 barra_superior(leer_estado().conectado)
 encabezado("Despensa", "Registra alimentos con la cámara o la voz y controla su vida útil.", "shopping_basket")
@@ -46,7 +46,7 @@ def inventario():
 
 def agregar(alimento: str):
     alimento = alimento.strip().capitalize()
-    inventario().append({"alimento": alimento, "fecha": datetime.now()})
+    inventario().append({"alimento": alimento, "fecha": datetime.now(ZONA)})
     enviar_orden(f"MENSAJE:+ {alimento}")       # aparece en la LCD de la nevera
     return f"{alimento} se agregó al inventario."
 
@@ -237,7 +237,7 @@ with tab_voz:
                              icon=":material/mic_off:")
 
             with st.form("texto", clear_on_submit=True, border=False):
-                a, b = st.columns([4, 1], vertical_alignment="bottom")
+                a, b = st.columns([2.6, 1.4], vertical_alignment="bottom")
                 frase = a.text_input("O escribe el comando")
                 if b.form_submit_button("Enviar", icon=":material/send:", type="primary",
                                         use_container_width=True) and frase:
@@ -274,7 +274,7 @@ with tab_inv:
           <div class="etiqueta">Agrega alimentos desde la cámara o con un comando de voz.</div>
         </div>""")
     else:
-        ahora = datetime.now() + timedelta(days=dias_extra)
+        ahora = datetime.now(ZONA) + timedelta(days=dias_extra)
         tiles, urgentes = [], []
         for item in items:
             nombre = sin_tildes(item["alimento"])

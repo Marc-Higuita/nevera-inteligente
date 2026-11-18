@@ -7,6 +7,8 @@ import json
 import threading
 import time
 from collections import deque
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import paho.mqtt.client as mqtt
 import streamlit as st
@@ -16,6 +18,7 @@ BROKER = "broker.mqttdashboard.com"   # o la IP del profe: "157.230.214.127"
 PUERTO = 1883
 TOPIC_DATOS = "nevera_ma_eafit/datos"
 TOPIC_CMD = "nevera_ma_eafit/cmd"
+ZONA = ZoneInfo("America/Bogota")
 
 
 class EstadoNevera:
@@ -49,7 +52,7 @@ def obtener_cliente():
             estado.ultimo = datos
             estado.ultima_hora = time.time()
             estado.historial.append({
-                "hora": time.strftime("%H:%M:%S"),
+                "hora": datetime.now(ZONA).strftime("%H:%M:%S"),
                 "Temperatura (°C)": datos.get("temp"),
                 "Humedad (%)": datos.get("hum"),
             })
