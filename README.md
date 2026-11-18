@@ -27,11 +27,23 @@ controlar el enfriamiento y llevar el inventario de alimentos con la **cámara**
 | Monitoreo de la nevera | Botones, radio, slider, texto | Métricas, gráfica en vivo, alertas, LEDs, buzzer, LCD |
 | Despensa inteligente | Cámara, foto o enlace (modelo CLIP), voz (SpeechRecognition), texto | Tabla de inventario, voz sintetizada (gTTS), LCD |
 
+## Funciones destacadas
+
+- **Escáner en vivo:** detección de alimentos en tiempo real en el navegador (TensorFlow.js, COCO-SSD) con interfaz tipo HUD; registra el alimento por MQTT.
+- **Reconocimiento por foto:** modelo CLIP que identifica 34 alimentos (incluidos leche, huevos y queso) desde la cámara, un archivo o un enlace.
+- **Control por gestos:** MediaPipe reconoce gestos de la mano y envía órdenes al ESP32 (mano abierta = silenciar, pulgar arriba/abajo = enfriamiento, V = automático, índice = probar alarma).
+- **Alertas al celular:** notificaciones push con ntfy cuando se activa la alarma.
+- **Recetas anti-desperdicio:** sugiere recetas que usan primero los alimentos por vencer; también por voz ("qué puedo cocinar").
+- **Energía:** minutos de puerta abierta y de enfriamiento, Wh y costo estimado del día.
+
 ## Estructura
 
 ```
 app.py                  # navegación entre páginas
-mqtt_utils.py           # cliente MQTT compartido (broker y temas)
+mqtt_utils.py           # cliente MQTT compartido, alertas ntfy y energía
+estilo.py               # sistema visual (íconos Material Symbols, tarjetas)
+componentes/escaner.html  # escáner en vivo (TensorFlow.js)
+componentes/gestos.html   # control por gestos (MediaPipe)
 paginas/inicio.py
 paginas/monitoreo.py    # ambiente 1
 paginas/despensa.py     # ambiente 2

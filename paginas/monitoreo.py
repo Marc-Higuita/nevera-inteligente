@@ -3,10 +3,13 @@ import time
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+from pathlib import Path
 
 from estilo import (AMBAR, AZUL, AZUL_SUAVE, GRIS, ROJO, VERDE, anillo, barra_superior,
                     encabezado, estado, html, ic)
-from mqtt_utils import enviar_orden, leer_estado
+from mqtt_utils import (BROKER_WS, NTFY_TEMA, PERDIDA_PUERTA_WH_MIN, POTENCIA_COMPRESOR_W, TARIFA_COP_KWH,
+                        TOPIC_CMD, energia_hoy, enviar_alerta, enviar_orden, leer_estado)
 
 barra_superior(leer_estado().conectado)
 encabezado("Monitoreo", "Estado de la nevera en tiempo real y control remoto del enfriamiento.", "thermostat")
@@ -81,6 +84,23 @@ def panel_en_vivo():
           <div style="margin-top:.6rem">{chip}</div>
         </div>""")
 
+    # Energía del día
+    min_puerta, min_comp, wh, pesos = energia_hoy()
+    st.write("")
+    e1, e2, e3 = st.columns(3, gap="medium")
+    tarjetas = [
+        (e1, "door_open", "#FFF1F1", ROJO, "Puerta abierta hoy", f"{min_puerta:.1f} min"),
+        (e2, "ac_unit", AZUL_SUAVE, AZUL, "Enfriamiento encendido hoy", f"{min_comp:.1f} min"),
+        (e3, "bolt", "#FFF4E0", AMBAR, "Energía estimada hoy", f"{wh:.1f} Wh · ${pesos:,.0f} COP".replace(",", ".")),
+    ]
+    for col, icono, fondo, color, etiqueta, valor in tarjetas:
+        with col:
+            html(f"""
+            <div class="card" style="display:flex;gap:.9rem;align-items:center;padding:1rem 1.2rem">
+              <span class="icono-circ" style="background:{fondo};color:{color};width:48px;height:48px">{ic(icono, 24)}</span>
+              <div><div class="etiqueta">{etiqueta}</div><div class="valor" style="font-size:1.25rem">{valor}</div></div>
+            </div>""")
+
     if est.historial:
         st.write("")
         with st.container(border=True):
@@ -136,3 +156,51 @@ with st.container(border=True):
         if b.form_submit_button("Enviar", icon=":material/send:", type="primary",
                                 use_container_width=True) and texto:
             ordenar(f"MENSAJE:{texto}", "Mensaje enviado a la pantalla")
+
+
+with st.popover("Cómo se calcula la energía", icon=":material/info:"):
+    st.markdown(
+        f"- Enfriamiento: **{POTENCIA_COMPRESOR_W} W** mientras el compresor está encendido.\n"
+        f"- Puerta abierta: **{PERDIDA_PUERTA_WH_MIN} Wh** extra por cada minuto, por la entrada de aire caliente.\n"
+        f"- Tarifa: **${TARIFA_COP_KWH} COP por kWh** (valor residencial aproximado).\n\n"
+        "Son estimaciones para mostrar el impacto de dejar la puerta abierta; los contadores se reinician cada día."
+    )
+
+# ---------- Control por gestos ----------
+st.write("")
+st.markdown("#### Control por gestos")
+st.caption("Sostén un gesto frente a la cámara durante un segundo para enviar la orden a la nevera.")
+
+
+@st.cache_data
+def html_gestos():
+    ruta = Path(__file__).resolve().parent.parent / "componentes" / "gestos.html"
+    return ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD).replace("__BROKER_WS__", BROKER_WS)
+
+
+components.html(html_gestos(), height=600, scrolling=False)
+
+# ---------- Alertas al celular ----------
+st.write("")
+st.markdown("#### Alertas al celular")
+with st.container(border=True):
+    a1, a2 = st.columns([1, 1.6], gap="large", vertical_alignment="center")
+    url_tema = f"https://ntfy.sh/{NTFY_TEMA}"
+    with a1:
+        st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data={url_tema}", width=200)
+    with a2:
+        st.markdown(
+            "Cuando la puerta queda abierta o la temperatura supera el límite, la nevera envía una "
+            "**notificación push** a tu celular.\n\n"
+            "1. Instala la app **ntfy** (Android o iPhone), o abre el enlace del código QR.\n"
+            f"2. Suscríbete al tema **`{NTFY_TEMA}`**.\n"
+            "3. Listo: las alertas llegan aunque la app no esté abierta."
+        )
+        if st.button("Enviar notificación de prueba", icon=":material/notifications_active:", type="primary"):
+            enviar_alerta("Nevera Inteligente", "Notificación de prueba: las alertas están configuradas.",
+                          leer_estado(), prioridad="default")
+            st.toast("Notificación enviada", icon=":material/check_circle:")
+    alertas = list(leer_estado().alertas)
+    if alertas:
+        st.caption("Últimas notificaciones: " + " · ".join(
+            f"{a['hora']} {'enviada' if a['ok'] else 'falló'}" for a in alertas[:4]))

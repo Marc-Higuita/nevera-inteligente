@@ -124,6 +124,16 @@ def interpretar(frase: str) -> str:
         return "Aún no hay datos de la nevera."
     if any(p in f for p in ("que hay", "inventario", "lista")):
         return resumen_inventario()
+    if any(p in f for p in ("receta", "cocino", "cocinar", "preparo")):
+        sug = sugerir_recetas(inventario(), n=1)
+        if not sug:
+            return "No tengo recetas para los alimentos registrados."
+        _, receta, _, urgentes, _ = sug[0]
+        extra = ""
+        if urgentes:
+            verbo = "vence" if len(urgentes) == 1 else "vencen"
+            extra = f" Así aprovechas {' y '.join(urgentes)}, que {verbo} pronto."
+        return f"Te sugiero {receta['nombre']}.{extra} " + " ".join(receta["pasos"])
 
     verbos_agregar = ("agrega", "agregar", "anade", "anadir", "guarda", "guardar", "mete", "compre")
     verbos_quitar = ("saca", "sacar", "quita", "quitar", "elimina", "borra", "comi", "se acabo")
@@ -245,10 +255,124 @@ def imagen_desde_enlace(url: str) -> Image.Image:
         return Image.open(io.BytesIO(r.read()))
 
 
+# ---------- Recetas anti-desperdicio ----------
+RECETAS = [
+    {"nombre": "Arepa con huevo", "min": 20, "icono": "egg_alt", "ingredientes": ["Arepa", "Huevos"],
+     "pasos": ["Asa las arepas hasta que estén doradas.", "Fríe o revuelve los huevos con sal.",
+               "Abre la arepa y rellénala con el huevo."]},
+    {"nombre": "Huevos pericos", "min": 15, "icono": "skillet", "ingredientes": ["Huevos", "Tomate", "Cebolla"],
+     "pasos": ["Sofríe el tomate y la cebolla picados.", "Agrega los huevos batidos con sal.",
+               "Revuelve a fuego medio hasta que cuajen."]},
+    {"nombre": "Batido de banano", "min": 5, "icono": "blender", "ingredientes": ["Banano", "Leche"],
+     "pasos": ["Pela y trocea el banano.", "Licúa con la leche fría.", "Sirve de inmediato."]},
+    {"nombre": "Arroz con leche", "min": 40, "icono": "rice_bowl", "ingredientes": ["Leche"],
+     "pasos": ["Cocina el arroz en agua hasta que ablande.", "Agrega la leche, azúcar y canela.",
+               "Cocina a fuego bajo hasta que espese."]},
+    {"nombre": "Salpicón de frutas", "min": 10, "icono": "nutrition",
+     "ingredientes": ["Manzana", "Banano", "Fresa", "Naranja", "Mango"],
+     "pasos": ["Pica todas las frutas en cubos.", "Mézclalas en un recipiente.",
+               "Agrega jugo de naranja y sirve frío."]},
+    {"nombre": "Ensalada fresca", "min": 10, "icono": "eco",
+     "ingredientes": ["Lechuga", "Tomate", "Pepino", "Zanahoria"],
+     "pasos": ["Lava y pica las verduras.", "Mezcla en un recipiente.", "Aliña con limón, sal y aceite."]},
+    {"nombre": "Sándwich de jamón y queso", "min": 10, "icono": "lunch_dining",
+     "ingredientes": ["Pan", "Jamón", "Queso"],
+     "pasos": ["Arma el sándwich con jamón y queso.", "Caliéntalo en sartén o sanduchera.",
+               "Sirve cuando el queso esté derretido."]},
+    {"nombre": "Pollo guisado", "min": 45, "icono": "set_meal", "ingredientes": ["Pollo", "Tomate", "Cebolla", "Papa"],
+     "pasos": ["Dora las presas de pollo.", "Agrega el hogao de tomate y cebolla.",
+               "Incorpora las papas y cocina tapado 30 minutos."]},
+    {"nombre": "Sopa de verduras", "min": 35, "icono": "soup_kitchen",
+     "ingredientes": ["Zanahoria", "Papa", "Brócoli", "Cebolla"],
+     "pasos": ["Pica todas las verduras.", "Cocínalas en agua con sal y cebolla.",
+               "Sirve caliente con cilantro."]},
+    {"nombre": "Tortilla de verduras", "min": 20, "icono": "skillet",
+     "ingredientes": ["Huevos", "Pimentón", "Cebolla", "Tomate"],
+     "pasos": ["Sofríe las verduras picadas.", "Vierte los huevos batidos encima.",
+               "Cocina tapado hasta que cuaje y dóblala."]},
+    {"nombre": "Yogur con frutas", "min": 5, "icono": "icecream", "ingredientes": ["Yogur", "Fresa", "Banano", "Manzana"],
+     "pasos": ["Pica la fruta.", "Sirve el yogur en un vaso.", "Agrega la fruta y granola si tienes."]},
+    {"nombre": "Guacamole", "min": 10, "icono": "nutrition", "ingredientes": ["Aguacate", "Tomate", "Cebolla", "Limón"],
+     "pasos": ["Machaca el aguacate.", "Agrega tomate y cebolla picados.", "Sazona con limón y sal."]},
+    {"nombre": "Bistec a caballo", "min": 30, "icono": "kebab_dining", "ingredientes": ["Carne", "Tomate", "Cebolla", "Huevos"],
+     "pasos": ["Asa la carne con sal y pimienta.", "Prepara un hogao de tomate y cebolla.",
+               "Sirve con el hogao y un huevo frito encima."]},
+    {"nombre": "Pasta con salsa y queso", "min": 20, "icono": "ramen_dining", "ingredientes": ["Pasta", "Salsa", "Queso"],
+     "pasos": ["Cocina la pasta en agua con sal.", "Calienta la salsa.", "Mezcla y gratina con queso."]},
+    {"nombre": "Limonada natural", "min": 5, "icono": "local_drink", "ingredientes": ["Limón"],
+     "pasos": ["Exprime los limones.", "Licúa con agua, hielo y azúcar.", "Cuela y sirve."]},
+]
+
+
+def dias_restantes(item, dias_extra=0):
+    ahora = datetime.now(ZONA) + timedelta(days=dias_extra)
+    dias = (ahora - item["fecha"]).days
+    return DURACION_DIAS.get(sin_tildes(item["alimento"]), 7) - dias
+
+
+def sugerir_recetas(items, n=6):
+    """Ordena las recetas: primero las que usan alimentos por vencer."""
+    disponibles = {}
+    for item in items:
+        clave = sin_tildes(item["alimento"])
+        r = dias_restantes(item)
+        disponibles[clave] = min(r, disponibles.get(clave, r))
+    resultado = []
+    for receta in RECETAS:
+        tiene = [i for i in receta["ingredientes"] if sin_tildes(i) in disponibles]
+        if not tiene:
+            continue
+        urgentes = [i for i in tiene if disponibles[sin_tildes(i)] <= 2]
+        puntaje = (len(tiene) / len(receta["ingredientes"])) + 1.5 * len(urgentes)
+        resultado.append((puntaje, receta, tiene, urgentes, disponibles))
+    resultado.sort(key=lambda x: -x[0])
+    return resultado[:n]
+
+
+def panel_recetas():
+    sugerencias = sugerir_recetas(inventario())
+    if not sugerencias:
+        html(f"""
+        <div class="card" style="text-align:center;padding:2.2rem">
+          {ic('menu_book', 44, GRIS)}
+          <div class="valor" style="font-size:1.15rem;margin-top:.6rem">Sin recetas sugeridas</div>
+          <div class="etiqueta">Registra alimentos en el inventario para recibir ideas.</div>
+        </div>""")
+        return
+    st.markdown("##### Recetas sugeridas para aprovechar primero lo que está por vencer")
+    cols = st.columns(3, gap="medium")
+    for i, (_, receta, tiene, urgentes, disponibles) in enumerate(sugerencias):
+        chips = ""
+        for ing in receta["ingredientes"]:
+            clave = sin_tildes(ing)
+            if ing in urgentes:
+                chips += estado(f"{ing} · vence pronto", "#9A5B00", "#FFF4E0") + " "
+            elif ing in tiene:
+                chips += estado(ing, "#11804F", "#E7F7EF") + " "
+            else:
+                chips += estado(ing, GRIS, "#F1F4FA") + " "
+        aviso = (f'<div class="etiqueta" style="margin-top:.5rem;color:#9A5B00;font-weight:600">'
+                 f'Aprovecha: {", ".join(urgentes)}</div>') if urgentes else ""
+        with cols[i % 3]:
+            html(f"""
+            <div class="card" style="margin-bottom:.4rem">
+              <div class="titulo"><span class="icono-circ" style="background:#E8EFFF;color:{AZUL}">{ic(receta['icono'])}</span>{receta['nombre']}</div>
+              <div class="etiqueta">{receta['min']} minutos · {len(tiene)} de {len(receta['ingredientes'])} ingredientes</div>
+              <div style="margin-top:.6rem;line-height:2">{chips}</div>
+              {aviso}
+            </div>""")
+            with st.expander("Preparación"):
+                for n, paso in enumerate(receta["pasos"], 1):
+                    st.markdown(f"{n}. {paso}")
+                if st.button("Leer receta", icon=":material/volume_up:", key=f"leer-{i}"):
+                    responder(f"{receta['nombre']}. " + " ".join(receta["pasos"]))
+
+
 # =====================================================================
-tab_cam, tab_voz, tab_inv = st.tabs([":material/photo_camera: Cámara",
-                                     ":material/mic: Voz y texto",
-                                     ":material/inventory_2: Inventario"])
+tab_cam, tab_voz, tab_inv, tab_rec = st.tabs([":material/photo_camera: Cámara",
+                                              ":material/mic: Voz y texto",
+                                              ":material/inventory_2: Inventario",
+                                              ":material/menu_book: Recetas"])
 
 # ---------- Cámara ----------
 @st.cache_data
@@ -367,7 +491,8 @@ with tab_voz:
     with der:
         comandos = [
             ("add_circle", "Agrega leche"), ("remove_circle", "Saca los huevos"),
-            ("list_alt", "Qué hay en la nevera"), ("device_thermostat", "Cuál es la temperatura"),
+            ("list_alt", "Qué hay en la nevera"), ("menu_book", "Qué puedo cocinar"),
+            ("device_thermostat", "Cuál es la temperatura"),
             ("ac_unit", "Enciende el enfriamiento"), ("notifications_off", "Silencia la alarma"),
         ]
         filas = "".join(
@@ -440,3 +565,6 @@ def panel_inventario():
 
 with tab_inv:
     panel_inventario()
+
+with tab_rec:
+    panel_recetas()

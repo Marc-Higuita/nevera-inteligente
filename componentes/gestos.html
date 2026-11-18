@@ -1,0 +1,218 @@
+<!-- Control por gestos: reconocimiento de gestos de la mano en el navegador
+     (MediaPipe Gesture Recognizer). Un gesto sostenido envía una orden MQTT al ESP32. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: transparent; font-family: 'JetBrains Mono', monospace; color: #DFFFE6; }
+  .wrap { display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
+  .pantalla { position: relative; background: #070A0D; border-radius: 22px; overflow: hidden; aspect-ratio: 16/9;
+              box-shadow: 0 18px 40px rgba(7,10,13,.35); }
+  video { display: none; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .portada { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center;
+             justify-content: center; text-align: center; padding: 20px; }
+  .portada h3 { font-family: 'Plus Jakarta Sans'; color: white; font-size: 1.25rem; }
+  .portada p { color: #8FA3A0; font-size: .8rem; max-width: 400px; line-height: 1.5; }
+  .btn { font-family: 'Plus Jakarta Sans'; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer;
+         padding: .7rem 1.3rem; font-size: .9rem; }
+  .btn.verde { background: #39FF6A; color: #04210C; }
+  .btn.oscuro { background: #1A2128; color: #DFFFE6; border: 1px solid #2B3640; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .panel { background: #0B1015; border-radius: 22px; padding: 14px; display: flex; flex-direction: column; gap: 8px;
+           border: 1px solid #1C262E; }
+  .rotulo { font-size: .66rem; color: #6E8580; letter-spacing: .12em; }
+  .fila { display: flex; justify-content: space-between; align-items: center; }
+  .gesto { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; border: 1px solid #1C262E;
+           font-size: .74rem; color: #9FB5B0; transition: all .15s; }
+  .gesto .ms { font-family: 'Material Symbols Rounded'; font-size: 22px; color: #6E8580;
+               font-variation-settings: 'FILL' 1, 'wght' 500; }
+  .gesto b { color: #DFFFE6; font-weight: 600; display: block; font-size: .78rem; }
+  .gesto.activo { border-color: #39FF6A; background: rgba(57,255,106,.08); }
+  .gesto.activo .ms { color: #39FF6A; }
+  .registro { font-size: .68rem; color: #9FB5B0; line-height: 1.6; min-height: 54px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: .66rem; color: #9FB5B0; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: #5B6670; display: inline-block; }
+  @media (max-width: 760px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <div class="pantalla">
+    <video id="video" playsinline muted></video>
+    <canvas id="lienzo"></canvas>
+    <div class="portada" id="portada">
+      <h3>Control de la nevera con gestos</h3>
+      <p>Muestra la mano a la cámara y sostén un gesto durante un segundo para enviar la orden al ESP32.
+         El reconocimiento se ejecuta en este navegador con MediaPipe.</p>
+      <button class="btn verde" id="iniciar">Activar control por gestos</button>
+      <p id="estado"></p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="fila"><span class="rotulo">GESTOS DISPONIBLES</span>
+      <span class="pill"><i id="luz"></i><span id="mqtt">MQTT</span></span></div>
+    <div id="guia"></div>
+    <div class="rotulo" style="margin-top:4px">ÚLTIMAS ÓRDENES</div>
+    <div class="registro" id="registro">Sin órdenes enviadas.</div>
+    <button class="btn oscuro" id="detener" disabled>Detener</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script type="module">
+import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+const { GestureRecognizer, FilesetResolver } = vision;
+
+const TOPIC_CMD = "__TOPIC_CMD__", BROKER_WS = "__BROKER_WS__";
+const VERDE = "#39FF6A", SOSTENER_MS = 1100, ESPERA_MS = 3000;
+
+// Gesto de MediaPipe -> acción sobre la nevera
+const GESTOS = {
+  Open_Palm:   { icono: "front_hand", nombre: "Mano abierta", accion: "Silenciar alarma", orden: "SILENCIAR" },
+  Thumb_Up:    { icono: "thumb_up", nombre: "Pulgar arriba", accion: "Encender enfriamiento", orden: "COMPRESOR_ON" },
+  Thumb_Down:  { icono: "thumb_down", nombre: "Pulgar abajo", accion: "Apagar enfriamiento", orden: "COMPRESOR_OFF" },
+  Victory:     { icono: "sign_language", nombre: "Victoria (V)", accion: "Modo automático", orden: "MODO_AUTO" },
+  Pointing_Up: { icono: "touch_app", nombre: "Índice arriba", accion: "Probar alarma sonora", orden: "PROBAR_ALARMA" },
+};
+
+const $ = id => document.getElementById(id);
+$("guia").innerHTML = Object.entries(GESTOS).map(([k, g]) =>
+  `<div class="gesto" id="g-${k}" style="margin-bottom:6px"><span class="ms">${g.icono}</span>
+   <div><b>${g.nombre}</b>${g.accion}</div></div>`).join("");
+
+const video = $("video"), lienzo = $("lienzo"), ctx = lienzo.getContext("2d");
+let reconocedor = null, stream = null, activo = false, cliente = null;
+let gestoActual = null, desde = 0, ultimoEnvio = 0, enviados = [];
+
+try {
+  cliente = mqtt.connect(BROKER_WS, { clientId: "gestos-" + Math.random().toString(16).slice(2, 8), reconnectPeriod: 4000 });
+  cliente.on("connect", () => { $("luz").style.background = VERDE; $("mqtt").textContent = "MQTT EN LÍNEA"; });
+  cliente.on("close", () => { $("luz").style.background = "#5B6670"; $("mqtt").textContent = "MQTT SIN CONEXIÓN"; });
+} catch (e) { $("mqtt").textContent = "MQTT NO DISPONIBLE"; }
+
+async function crearReconocedor() {
+  const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+  const opciones = delegate => ({
+    baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task", delegate },
+    runningMode: "VIDEO", numHands: 1 });
+  try { return await GestureRecognizer.createFromOptions(fileset, opciones("GPU")); }
+  catch (e) { return await GestureRecognizer.createFromOptions(fileset, opciones("CPU")); }
+}
+
+$("iniciar").onclick = async () => {
+  try {
+    $("estado").textContent = "Solicitando acceso a la cámara…";
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    video.srcObject = stream; await video.play();
+    $("estado").textContent = "Cargando modelo de gestos…";
+    reconocedor = reconocedor || await crearReconocedor();
+    $("portada").style.display = "none"; $("detener").disabled = false; activo = true;
+    requestAnimationFrame(ciclo);
+  } catch (e) { $("estado").textContent = "No fue posible iniciar: " + e.message; }
+};
+$("detener").onclick = () => {
+  activo = false; if (stream) stream.getTracks().forEach(t => t.stop());
+  ctx.clearRect(0, 0, lienzo.width, lienzo.height);
+  $("portada").style.display = "flex"; $("estado").textContent = "Control por gestos detenido.";
+  $("detener").disabled = true;
+};
+
+function enviar(clave) {
+  const g = GESTOS[clave];
+  const hora = new Date().toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" });
+  if (cliente && cliente.connected) {
+    cliente.publish(TOPIC_CMD, g.orden);
+    enviados.unshift(`${hora} · ${g.accion}`);
+  } else {
+    enviados.unshift(`${hora} · Sin conexión MQTT`);
+  }
+  enviados = enviados.slice(0, 4);
+  $("registro").innerHTML = enviados.join("<br>");
+}
+
+function ciclo() {
+  if (!activo) return;
+  if (video.readyState >= 2) {
+    const W = video.videoWidth, H = video.videoHeight, k = W / 1280;
+    if (lienzo.width !== W) { lienzo.width = W; lienzo.height = H; }
+    // Video en espejo para que el movimiento se sienta natural
+    ctx.save(); ctx.scale(-1, 1); ctx.drawImage(video, -W, 0, W, H); ctx.restore();
+    ctx.fillStyle = "rgba(4,10,8,.25)"; ctx.fillRect(0, 0, W, H);
+
+    const res = reconocedor.recognizeForVideo(video, performance.now());
+    const mano = res.landmarks && res.landmarks[0];
+    const cat = res.gestures && res.gestures[0] && res.gestures[0][0];
+    const clave = cat && GESTOS[cat.categoryName] && cat.score > 0.55 ? cat.categoryName : null;
+
+    hud(W, H, k, mano ? 1 : 0);
+    if (mano) dibujarMano(mano, W, H, k, clave, cat);
+
+    // Gesto sostenido -> orden
+    const ahora = performance.now();
+    if (clave !== gestoActual) { gestoActual = clave; desde = ahora; }
+    document.querySelectorAll(".gesto").forEach(el => el.classList.toggle("activo", el.id === "g-" + clave));
+    if (clave && ahora - desde > SOSTENER_MS && ahora - ultimoEnvio > ESPERA_MS) {
+      enviar(clave); ultimoEnvio = ahora; desde = ahora;
+    }
+  }
+  requestAnimationFrame(ciclo);
+}
+
+function hud(W, H, k, manos) {
+  ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1;
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath(); ctx.moveTo(W * i / 3, 0); ctx.lineTo(W * i / 3, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, H * i / 3); ctx.lineTo(W, H * i / 3); ctx.stroke();
+  }
+  const hora = new Date().toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" });
+  ctx.font = `600 ${15 * k}px JetBrains Mono`; ctx.fillStyle = "rgba(255,255,255,.9)";
+  ctx.textAlign = "left"; ctx.fillText("SYS DIAG: OK", 22 * k, 34 * k);
+  ctx.fillText("MANOS DETECTADAS: " + manos, 22 * k, H - 22 * k);
+  ctx.textAlign = "right"; ctx.fillText("HORA: " + hora + " COT", W - 22 * k, 34 * k);
+  ctx.fillText("MODO: CONTROL GESTUAL", W - 22 * k, H - 22 * k);
+  ctx.textAlign = "left";
+}
+
+function dibujarMano(puntos, W, H, k, clave, cat) {
+  const P = puntos.map(p => [(1 - p.x) * W, p.y * H]);   // espejo
+  // Esqueleto
+  ctx.strokeStyle = "rgba(57,255,106,.9)"; ctx.lineWidth = 3 * k;
+  GestureRecognizer.HAND_CONNECTIONS.forEach(({ start, end }) => {
+    ctx.beginPath(); ctx.moveTo(...P[start]); ctx.lineTo(...P[end]); ctx.stroke();
+  });
+  P.forEach(([x, y], i) => {
+    ctx.fillStyle = [4, 8, 12, 16, 20].includes(i) ? "#FFFFFF" : VERDE;
+    ctx.beginPath(); ctx.arc(x, y, 5 * k, 0, Math.PI * 2); ctx.fill();
+  });
+  // Recuadro con esquinas
+  const xs = P.map(p => p[0]), ys = P.map(p => p[1]), m = 24 * k;
+  const x = Math.min(...xs) - m, y = Math.min(...ys) - m, w = Math.max(...xs) - x + m, h = Math.max(...ys) - y + m;
+  const c = 24 * k; ctx.strokeStyle = VERDE; ctx.lineWidth = 3 * k;
+  [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([cx, cy, sx, sy]) => {
+    ctx.beginPath(); ctx.moveTo(cx + sx * c, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + sy * c); ctx.stroke();
+  });
+  // Etiqueta
+  const g = clave ? GESTOS[clave] : null;
+  const l1 = g ? `${g.nombre.toUpperCase()}  ${(cat.score * 100).toFixed(0)}%` : "MANO DETECTADA";
+  const l2 = g ? "ACCIÓN: " + g.accion.toUpperCase() : "SIN GESTO RECONOCIDO";
+  ctx.font = `700 ${15 * k}px JetBrains Mono`;
+  const tw = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 22 * k, ty = Math.max(y - 70 * k, 0);
+  ctx.fillStyle = VERDE; ctx.fillRect(x, ty, tw, 12 * k);
+  ctx.fillStyle = "#04210C";
+  for (let i = 0; i < 26; i++) if ((i * 7) % 3) ctx.fillRect(x + 6 * k + i * 3 * k, ty + 2 * k, (i % 2 + 1) * k, 8 * k);
+  ctx.fillStyle = "rgba(4,33,12,.85)"; ctx.fillRect(x, ty + 12 * k, tw, 52 * k);
+  ctx.strokeStyle = VERDE; ctx.lineWidth = 1.5 * k; ctx.strokeRect(x, ty, tw, 64 * k);
+  ctx.fillStyle = VERDE; ctx.fillText(l1, x + 11 * k, ty + 31 * k);
+  ctx.font = `400 ${12 * k}px JetBrains Mono`; ctx.fillStyle = "#BFFFD0"; ctx.fillText(l2, x + 11 * k, ty + 52 * k);
+  // Barra de "mantener el gesto"
+  if (g) {
+    const frac = Math.min((performance.now() - desde) / SOSTENER_MS, 1);
+    const enEspera = performance.now() - ultimoEnvio < ESPERA_MS;
+    ctx.fillStyle = "rgba(255,255,255,.15)"; ctx.fillRect(x, y + h + 10 * k, w, 8 * k);
+    ctx.fillStyle = enEspera ? "#5B6670" : VERDE; ctx.fillRect(x, y + h + 10 * k, w * (enEspera ? 1 : frac), 8 * k);
+    ctx.font = `600 ${12 * k}px JetBrains Mono`; ctx.fillStyle = "white";
+    ctx.fillText(enEspera ? "ORDEN ENVIADA" : "MANTÉN EL GESTO…", x, y + h + 34 * k);
+  }
+}
+</script>
