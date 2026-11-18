@@ -171,8 +171,18 @@ $("registrar").onclick = () => {
     cliente.publish(TOPIC_INV, "AGREGAR:" + nombre);
     cliente.publish(TOPIC_CMD, "MENSAJE:Detectado: " + nombre);
     sonar(SONIDOS.exito);
-    hablar(nombre + " registrado en la nevera");
+    hablar(nombre + " quedó registrado en la nevera");
     $("aviso").textContent = "Registrado: " + nombre + " (inventario y pantalla de la nevera)";
+    // Termina el escaneo: ya no hace falta seguir escaneando
+    setTimeout(() => {
+      activo = false; if (stream) stream.getTracks().forEach(t => t.stop());
+      ctx.clearRect(0, 0, capa.width, capa.height);
+      $("portada").style.display = "flex";
+      $("portada").querySelector("h3").textContent = nombre + " quedó registrado";
+      $("estado").textContent = "Ya está en el inventario y en la pantalla de la nevera.";
+      $("iniciar").textContent = "Escanear otro alimento";
+      $("detener").disabled = true; $("registrar").disabled = true;
+    }, 900);
   } else {
     $("aviso").textContent = "Sin conexión MQTT. Intenta de nuevo en unos segundos.";
   }
