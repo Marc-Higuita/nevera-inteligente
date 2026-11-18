@@ -25,7 +25,7 @@ controlar el enfriamiento y llevar el inventario de alimentos con la **cámara**
 | Ambiente | Entrada | Salida |
 |---|---|---|
 | Monitoreo de la nevera | Botones, radio, slider, texto | Métricas, gráfica en vivo, alertas, LEDs, buzzer, LCD |
-| Despensa inteligente | Cámara (Teachable Machine), voz (SpeechRecognition), texto | Tabla de inventario, voz sintetizada (gTTS), LCD |
+| Despensa inteligente | Cámara, foto o enlace (modelo CLIP), voz (SpeechRecognition), texto | Tabla de inventario, voz sintetizada (gTTS), LCD |
 
 ## Estructura
 

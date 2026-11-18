@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
-from PIL import Image, ImageOps
+from PIL import Image
 
 from estilo import AMBAR, AZUL, GRIS, ROJO, VERDE, barra_superior, encabezado, estado, html, ic
 from mqtt_utils import ZONA, enviar_orden, leer_estado
@@ -24,7 +24,8 @@ DURACION_DIAS = {
     "verdura": 5, "tomate": 7, "lechuga": 5, "zanahoria": 21,
     "naranja": 14, "limon": 21, "fresa": 4, "pina": 5, "pimenton": 7, "pepino": 7,
     "brocoli": 5, "coliflor": 7, "repollo": 14, "champinon": 5, "calabacin": 7, "maiz": 4,
-    "agua": 60, "gaseosa": 30, "pizza": 3, "helado": 60, "salchicha": 7, "pan": 4, "pasta": 3,
+    "agua": 60, "gaseosa": 30, "mantequilla": 30, "pescado": 2, "arepa": 5, "uvas": 7,
+    "mango": 5, "aguacate": 4, "cebolla": 30, "papa": 30, "jugo": 7, "salsa": 30, "pizza": 3, "helado": 60, "salchicha": 7, "pan": 4, "pasta": 3,
 }
 # Ícono (Material Symbols) para cada alimento
 ICONOS = {
@@ -37,7 +38,9 @@ ICONOS = {
     "calabacin": "eco", "maiz": "eco", "ahuyama": "eco", "agua": "water_bottle",
     "gaseosa": "local_drink", "vino": "wine_bar", "cerveza": "sports_bar", "pizza": "local_pizza",
     "helado": "icecream", "salchicha": "kebab_dining", "hamburguesa": "lunch_dining",
-    "pan": "bakery_dining", "pasta": "ramen_dining", "sopa": "soup_kitchen",
+    "pan": "bakery_dining", "mantequilla": "breakfast_dining", "pescado": "set_meal",
+    "arepa": "bakery_dining", "uvas": "nutrition", "mango": "nutrition", "aguacate": "nutrition",
+    "cebolla": "eco", "papa": "eco", "jugo": "local_drink", "salsa": "liquor", "pasta": "ramen_dining", "sopa": "soup_kitchen",
 }
 CLASES_VACIAS = {"nada", "vacio", "fondo", "ninguno"}
 
@@ -150,73 +153,94 @@ def responder(texto: str):
 
 
 # ---------- Reconocimiento de alimentos ----------
-# 1) Si existe modelo/keras_model.h5 (Teachable Machine), se usa ese.
-# 2) Si no, se usa MobileNetV2 preentrenado con ImageNet (1000 categorías),
-#    filtrando solo las categorías de alimentos y traduciéndolas al español.
-IMAGENET_ES = {
-    "Granny_Smith": "Manzana", "banana": "Banano", "orange": "Naranja", "lemon": "Limón",
-    "strawberry": "Fresa", "pineapple": "Piña", "pomegranate": "Granada", "fig": "Higo",
-    "custard_apple": "Guanábana", "jackfruit": "Yaca", "bell_pepper": "Pimentón",
-    "cucumber": "Pepino", "broccoli": "Brócoli", "cauliflower": "Coliflor",
-    "head_cabbage": "Repollo", "mushroom": "Champiñón", "zucchini": "Calabacín",
-    "corn": "Maíz", "ear": "Maíz", "artichoke": "Alcachofa", "butternut_squash": "Ahuyama",
-    "acorn_squash": "Ahuyama", "spaghetti_squash": "Ahuyama", "cardoon": "Verdura",
-    "water_bottle": "Agua", "pop_bottle": "Gaseosa", "wine_bottle": "Vino", "beer_bottle": "Cerveza",
-    "milk_can": "Leche", "pizza": "Pizza", "ice_cream": "Helado", "hotdog": "Salchicha",
-    "cheeseburger": "Hamburguesa", "French_loaf": "Pan", "bagel": "Pan", "pretzel": "Pan",
-    "meat_loaf": "Carne", "carbonara": "Pasta", "guacamole": "Guacamole", "burrito": "Burrito",
-    "potpie": "Pastel", "trifle": "Postre", "mashed_potato": "Puré", "consomme": "Sopa",
-    "hot_pot": "Sopa", "eggnog": "Leche", "plate": None, "dough": "Masa",
+# Se usa CLIP (OpenAI), un modelo que compara la imagen con descripciones en texto.
+# Por eso puede reconocer cualquier alimento de esta lista sin entrenamiento previo.
+# Para agregar un alimento basta con añadir una línea: "Nombre": ["descripción en inglés", ...]
+CATALOGO = {
+    "Leche": ["a carton of milk", "a bottle of milk", "a glass of milk", "a bag of milk"],
+    "Huevos": ["eggs", "a carton of eggs", "chicken eggs"],
+    "Queso": ["a block of cheese", "sliced cheese", "fresh white cheese"],
+    "Yogur": ["a cup of yogurt", "a bottle of drinkable yogurt"],
+    "Mantequilla": ["a stick of butter", "butter"],
+    "Jamón": ["sliced ham", "a package of ham"],
+    "Carne": ["raw red meat", "beef steak"],
+    "Pollo": ["raw chicken", "chicken breast"],
+    "Pescado": ["raw fish", "fish fillet"],
+    "Salchicha": ["sausages", "hot dog sausages"],
+    "Arepa": ["arepas", "a corn arepa"],
+    "Manzana": ["an apple", "red apples", "a green apple"],
+    "Banano": ["a banana", "a bunch of bananas"],
+    "Naranja": ["an orange fruit", "oranges"],
+    "Limón": ["a lime", "a lemon"],
+    "Fresa": ["strawberries"],
+    "Uvas": ["grapes"],
+    "Piña": ["a pineapple"],
+    "Mango": ["a mango"],
+    "Aguacate": ["an avocado"],
+    "Tomate": ["a tomato", "tomatoes"],
+    "Zanahoria": ["a carrot", "carrots"],
+    "Lechuga": ["lettuce", "a head of lettuce"],
+    "Cebolla": ["an onion", "onions"],
+    "Papa": ["potatoes"],
+    "Pimentón": ["a bell pepper"],
+    "Pepino": ["a cucumber"],
+    "Brócoli": ["broccoli"],
+    "Pan": ["bread", "a loaf of bread"],
+    "Agua": ["a bottle of water"],
+    "Gaseosa": ["a can of soda", "a bottle of soda"],
+    "Jugo": ["a box of juice", "a bottle of juice"],
+    "Salsa": ["a bottle of ketchup", "a jar of sauce"],
+    "Helado": ["a tub of ice cream", "ice cream"],
+    "Nada": ["a person", "a face", "a room", "an empty table", "a wall", "an empty refrigerator shelf"],
 }
 
 
-@st.cache_resource(show_spinner="Cargando modelo de reconocimiento…")
+@st.cache_resource(show_spinner="Cargando modelo de reconocimiento (solo la primera vez)…")
 def cargar_modelo():
-    """Devuelve (tipo, modelo, etiquetas). tipo = 'tm', 'general' o None."""
-    ruta_modelo = CARPETA_MODELO / "keras_model.h5"
-    ruta_labels = CARPETA_MODELO / "labels.txt"
+    """Carga CLIP y precalcula las descripciones de todos los alimentos."""
     try:
-        if ruta_modelo.exists() and ruta_labels.exists():
-            from tensorflow.keras.layers import DepthwiseConv2D
-            from tensorflow.keras.models import load_model
+        import torch
+        from transformers import CLIPModel, CLIPProcessor
 
-            class DepthwiseConv2DCompat(DepthwiseConv2D):
-                # Teachable Machine guarda un parámetro 'groups' que Keras nuevo no acepta
-                def __init__(self, *args, **kwargs):
-                    kwargs.pop("groups", None)
-                    super().__init__(*args, **kwargs)
-
-            modelo = load_model(str(ruta_modelo), compile=False,
-                                custom_objects={"DepthwiseConv2D": DepthwiseConv2DCompat})
-            etiquetas = [l.strip().split(" ", 1)[-1]
-                         for l in ruta_labels.read_text(encoding="utf-8").splitlines() if l.strip()]
-            return "tm", modelo, etiquetas
-
-        from tensorflow.keras.applications import MobileNetV2
-        return "general", MobileNetV2(weights="imagenet"), None
+        nombre = "openai/clip-vit-base-patch32"
+        modelo = CLIPModel.from_pretrained(nombre).eval()
+        procesador = CLIPProcessor.from_pretrained(nombre)
+        textos, clases = [], []
+        for clase, frases in CATALOGO.items():
+            for frase in frases:
+                textos.append(f"a photo of {frase}")
+                clases.append(clase)
+        with torch.no_grad():
+            entrada = procesador(text=textos, return_tensors="pt", padding=True)
+            emb = modelo.get_text_features(**entrada)
+            emb = emb / emb.norm(dim=-1, keepdim=True)
+        return modelo, procesador, emb, clases
     except Exception:
-        return None, None, None
+        return None
 
 
 def reconocer(imagen: Image.Image):
     """Devuelve (alimento o None, confianza)."""
-    tipo, modelo, etiquetas = cargar_modelo()
-    imagen = ImageOps.fit(imagen.convert("RGB"), (224, 224), Image.Resampling.LANCZOS)
-    arreglo = ((np.asarray(imagen, dtype=np.float32) / 127.5) - 1)[np.newaxis, ...]
+    import torch
 
-    if tipo == "tm":
-        pred = modelo.predict(arreglo, verbose=0)[0]
-        i = int(np.argmax(pred))
-        clase = etiquetas[i]
-        return (None if sin_tildes(clase) in CLASES_VACIAS else clase), float(pred[i])
+    modelo, procesador, emb_textos, clases = cargar_modelo()
+    with torch.no_grad():
+        entrada = procesador(images=imagen.convert("RGB"), return_tensors="pt")
+        emb = modelo.get_image_features(**entrada)
+        emb = emb / emb.norm(dim=-1, keepdim=True)
+        probs = (100 * emb @ emb_textos.T).softmax(dim=-1)[0].tolist()
+    total = {}
+    for clase, p in zip(clases, probs):
+        total[clase] = total.get(clase, 0) + p
+    mejor = max(total, key=total.get)
+    return (None if mejor == "Nada" else mejor), total[mejor]
 
-    from tensorflow.keras.applications.mobilenet_v2 import decode_predictions
-    pred = modelo.predict(arreglo, verbose=0)
-    for _, nombre, prob in decode_predictions(pred, top=5)[0]:
-        alimento = IMAGENET_ES.get(nombre)
-        if alimento and prob >= 0.05:
-            return alimento, float(prob)
-    return None, 0.0
+
+def imagen_desde_enlace(url: str) -> Image.Image:
+    import urllib.request
+    pedido = urllib.request.Request(url, headers={"User-Agent": "NeveraInteligente/1.0 (proyecto EAFIT)"})
+    with urllib.request.urlopen(pedido, timeout=15) as r:
+        return Image.open(io.BytesIO(r.read()))
 
 
 # =====================================================================
@@ -227,43 +251,53 @@ tab_cam, tab_voz, tab_inv = st.tabs([":material/photo_camera: Cámara",
 # ---------- Cámara ----------
 with tab_cam:
     izq, der = st.columns([1.2, 1], gap="large")
+    imagen = None
     with izq:
-        origen = st.segmented_control("Origen de la imagen", ["Cámara", "Subir foto"], default="Cámara",
-                                      label_visibility="collapsed")
+        origen = st.segmented_control("Origen de la imagen", ["Cámara", "Subir foto", "Enlace"],
+                                      default="Cámara", label_visibility="collapsed")
         if origen == "Subir foto":
-            foto = st.file_uploader("Sube una foto del alimento", type=["jpg", "jpeg", "png", "webp"])
-            if foto is not None:
-                st.image(foto, use_container_width=True)
+            archivo = st.file_uploader("Sube una foto del alimento", type=["jpg", "jpeg", "png", "webp"])
+            if archivo is not None:
+                imagen = Image.open(archivo)
+        elif origen == "Enlace":
+            enlace = st.text_input("Pega el enlace de una imagen de internet",
+                                   placeholder="https://…/foto.jpg")
+            if enlace:
+                try:
+                    imagen = imagen_desde_enlace(enlace.strip())
+                except Exception:
+                    st.error("No fue posible abrir la imagen. Verifica que el enlace termine en .jpg o .png.",
+                             icon=":material/link_off:")
         else:
             foto = st.camera_input("Ubica el alimento frente a la cámara y toma la foto")
+            if foto is not None:
+                imagen = Image.open(foto)
+        if imagen is not None and origen != "Cámara":
+            st.image(imagen, use_container_width=True)
+
     with der:
-        tipo_modelo = cargar_modelo()[0]
-        if foto is None:
-            fuente = ("Modelo propio entrenado en Teachable Machine" if tipo_modelo == "tm"
-                      else "Modelo MobileNetV2 preentrenado (ImageNet)")
+        if imagen is None:
             html(f"""
             <div class="card" style="text-align:center;padding:2rem">
               {ic('center_focus_strong', 44, GRIS)}
               <div class="valor" style="font-size:1.15rem;margin-top:.6rem">Reconocimiento de alimentos</div>
               <div class="etiqueta">Toma o sube una foto y el modelo identificará el producto para registrarlo.</div>
-              <div style="margin-top:.8rem">{estado(fuente, AZUL, "#E8EFFF")}</div>
+              <div style="margin-top:.8rem">{estado(f"Modelo CLIP · {len(CATALOGO) - 1} alimentos", AZUL, "#E8EFFF")}</div>
             </div>""")
-        elif tipo_modelo is None:
-            st.info("El modelo de reconocimiento no está disponible. Escribe el nombre del alimento.",
-                    icon=":material/info:")
-            manual = st.text_input("Nombre del alimento")
-            if st.button("Agregar al inventario", icon=":material/add:", type="primary",
-                         key="manual") and manual:
-                responder(agregar(manual))
         else:
             with st.spinner("Analizando imagen…"):
-                clase, confianza = reconocer(Image.open(foto))
-            if clase is None:
-                st.info("No se identificó un alimento. Acércalo a la cámara o prueba con otra foto.",
+                cargado = cargar_modelo() is not None
+                clase, confianza = reconocer(imagen) if cargado else (None, 0.0)
+            if not cargado:
+                st.info("El modelo de reconocimiento no está disponible. Escribe el nombre del alimento.",
                         icon=":material/info:")
-                manual = st.text_input("Si lo prefieres, escribe el nombre del alimento")
+            if clase is None:
+                if cargado:
+                    st.info("No se identificó un alimento. Acércalo a la cámara o prueba con otra foto.",
+                            icon=":material/info:")
+                manual = st.text_input("Escribe el nombre del alimento")
                 if st.button("Agregar al inventario", icon=":material/add:", type="primary",
-                             key="manual2") and manual:
+                             key="manual") and manual:
                     responder(agregar(manual))
             else:
                 icono = ICONOS.get(sin_tildes(clase), "kitchen")
