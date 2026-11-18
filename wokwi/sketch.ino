@@ -193,7 +193,7 @@ void actualizarLogica() {
   // La alarma salta por encima del limite (o 1.5 °C sobre el objetivo, si el objetivo es mayor)
   bool muyCaliente = temp > max(umbral, objetivo + 1.5f);
 
-  // Modo automatico (termostato con histeresis de 0.5 °C):
+  // Modo automatico (termostato con histeresis de 0.3 °C):
   // enfria si la temperatura esta por encima del objetivo y se apaga al alcanzarlo
   if (modoAuto) {
     if (temp > objetivo + 0.3) compresor = true;

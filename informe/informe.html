@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Informe – Nevera Inteligente</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1a1a1a; max-width: 820px; margin: 30px auto; }
+  h1 { font-size: 16pt; color: #1F3A8A; margin-top: 26px; }
+  h2 { font-size: 13pt; color: #1F3A8A; margin-top: 18px; }
+  h3 { font-size: 11.5pt; margin-top: 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; }
+  th, td { border: 1px solid #9AA4B8; padding: 5px 7px; vertical-align: top; font-size: 10pt; }
+  th { background: #DCE6FF; text-align: left; }
+  .portada { text-align: center; }
+  .figura { text-align: center; margin: 10px 0 4px; }
+  .pie { text-align: center; font-size: 9.5pt; color: #444; font-style: italic; margin-bottom: 14px; }
+  .codigo { font-family: "Courier New", monospace; font-size: 9.5pt; background: #F3F5FA; padding: 6px 8px; }
+</style>
+</head>
+<body>
+
+<!-- ===================== D1. PORTADA ===================== -->
+<div class="portada">
+<p><b>UNIVERSIDAD EAFIT</b></p>
+<p>[Escuela / Programa académico]</p>
+<p><br></p>
+<p><b>[Nombre de la materia]</b></p>
+<p><br></p>
+<p style="font-size:20pt"><b>NEVERA INTELIGENTE</b></p>
+<p style="font-size:13pt">Sistema IoT multimodal para el monitoreo de la nevera y la gestión de alimentos<br>con ESP32 (Wokwi), MQTT y Streamlit</p>
+<p><br></p>
+<p>Proyecto final</p>
+<p><br></p>
+<p><b>Presentado por:</b><br>[Nombre completo de la estudiante]<br>[Código / documento]</p>
+<p><br></p>
+<p><b>Presentado a:</b><br>[Nombre del profesor]</p>
+<p><br></p>
+<p>Medellín, Colombia<br>Noviembre de 2026</p>
+</div>
+<p style="page-break-after: always"><br></p>
+
+<h1>Resumen</h1>
+<p>Este proyecto presenta <b>Nevera Inteligente</b>, un sistema de Internet de las Cosas (IoT) que monitorea una nevera doméstica y ayuda a gestionar los alimentos que guarda. El problema surge de una situación real: cuando la madre de la autora viaja, nadie revisa la nevera con frecuencia; la puerta puede quedar mal cerrada, la temperatura sube sin que nadie lo note y la comida termina dañándose o venciéndose. La solución combina un microcontrolador ESP32 simulado en Wokwi —con sensor de temperatura y humedad, interruptor de puerta, LED, alarma sonora y pantalla LCD— y una aplicación web multipágina en Streamlit. Ambos se comunican en los dos sentidos mediante el protocolo MQTT. La aplicación ofrece dos ambientes: <i>Monitoreo</i>, para vigilar y controlar la nevera, y <i>Despensa</i>, para registrar alimentos y controlar su vida útil. La interacción es multimodal: botones y controles deslizantes, texto, comandos de voz con respuesta hablada, reconocimiento de alimentos con cámara (CLIP y TensorFlow.js), control por gestos de la mano (MediaPipe), sonidos, una réplica en vivo de la pantalla LCD y notificaciones push al celular. Las pruebas mostraron que los datos del ESP32 llegan a la aplicación cada dos segundos, que las órdenes de la aplicación se ejecutan en la nevera simulada, que el termostato lleva la temperatura al objetivo fijado y que las alertas llegan al teléfono cuando la puerta queda abierta.</p>
+<p><b>Palabras clave:</b> Internet de las Cosas, interfaces multimodales, MQTT, ESP32, Wokwi, Streamlit, visión por computador, reconocimiento de gestos, desperdicio de alimentos.</p>
+
+<!-- ===================== D2. INTRODUCCIÓN ===================== -->
+<h1>1. Introducción</h1>
+<p>La nevera es uno de los electrodomésticos más importantes de un hogar y, al mismo tiempo, uno de los que menos se vigila: solo nos damos cuenta de que algo falló cuando la comida ya se dañó. El desperdicio de alimentos es un problema de escala mundial. Según el <i>Food Waste Index Report 2024</i> del Programa de las Naciones Unidas para el Medio Ambiente, en 2022 se desperdiciaron 1.050 millones de toneladas de alimentos, y los hogares fueron responsables del 60 % de ese total (UNEP, 2024). El mismo informe señala que los países más cálidos generan más desperdicio por persona en los hogares, en parte por la falta de una cadena de frío confiable.</p>
+<p>La temperatura es la variable clave. La Administración de Alimentos y Medicamentos de Estados Unidos recomienda mantener la nevera a 4 °C (40 °F) o menos, y desechar los alimentos perecederos que hayan pasado dos horas o más por encima de esa temperatura; una nevera cerrada conserva el frío durante unas cuatro horas si no se abre (FDA, s.f.). Por eso, una puerta mal cerrada durante un viaje puede arruinar todo lo que hay dentro sin que nadie se entere.</p>
+<p>Este proyecto propone una nevera inteligente que se puede vigilar y controlar a distancia, que avisa al celular cuando algo anda mal y que, además, ayuda a saber qué alimentos hay y cuáles deben consumirse primero. El sistema se construyó como proyecto final del curso de interfaces multimodales: el hardware se simula en Wokwi y la interfaz se desarrolló en Streamlit, con varias formas de interacción además de la pantalla y el teclado.</p>
+
+<h2>1.1 Planteamiento del problema</h2>
+<p>En el hogar de la autora, cuando su madre viaja, la nevera queda sin supervisión durante varios días. En esas ocasiones han ocurrido dos situaciones recurrentes: la puerta queda abierta o mal cerrada durante horas, y algunos alimentos se vencen porque nadie recuerda cuándo se compraron. El resultado es comida dañada, dinero perdido y consumo innecesario de energía.</p>
+<p><b>Pregunta orientadora:</b> ¿cómo puede una interfaz multimodal conectada a la nevera ayudar a detectar a tiempo los problemas de temperatura y de puerta abierta, y a reducir el desperdicio de alimentos en el hogar, aun cuando no haya nadie en casa?</p>
+
+<h2>1.2 Objetivos</h2>
+<h3>Objetivo general</h3>
+<p>Desarrollar un sistema IoT de nevera inteligente, simulado en Wokwi y controlado desde una aplicación web multipágina en Streamlit, que permita monitorear y controlar la nevera y gestionar los alimentos mediante varias modalidades de interacción.</p>
+<h3>Objetivos específicos</h3>
+<ol>
+<li>Simular en Wokwi un circuito con ESP32, sensor DHT22, interruptor de puerta, LED, buzzer y pantalla LCD, con un firmware que modele el comportamiento térmico de una nevera.</li>
+<li>Implementar una comunicación bidireccional entre el ESP32 y la aplicación mediante el protocolo MQTT.</li>
+<li>Construir una aplicación en Streamlit con dos ambientes de interacción: monitoreo y control de la nevera, y gestión de la despensa.</li>
+<li>Integrar modalidades de entrada y salida diversas: botones, texto, voz, cámara, gestos, sonidos y notificaciones push.</li>
+<li>Evaluar el funcionamiento del sistema mediante pruebas de cada función y documentar los resultados.</li>
+</ol>
+
+<!-- ===================== D3. MARCO TEÓRICO ===================== -->
+<h1>2. Marco teórico</h1>
+<h2>2.1 Interfaces multimodales</h2>
+<p>Una interfaz multimodal permite que la persona se comunique con un sistema por más de un canal —voz, gestos, mirada, tacto, texto— y que el sistema le responda también de varias formas. El trabajo pionero de Bolt (1980), <i>"Put-that-there"</i>, combinó la voz con el gesto de señalar para mover objetos en una pantalla, y mostró que los canales se complementan: la voz expresa la intención y el gesto aporta la ubicación. Oviatt (1999) advierte que la multimodalidad no consiste en ofrecer todos los canales al mismo tiempo, sino en dejar que cada persona elija el más natural según el contexto; por ejemplo, la voz cuando se tienen las manos ocupadas y el gesto cuando hay ruido. Este proyecto sigue ese principio: casi todas las acciones (cambiar la temperatura, abrir la puerta, preguntar por un alimento) se pueden hacer con botón, texto, voz o gesto.</p>
+
+<h2>2.2 Internet de las Cosas y protocolo MQTT</h2>
+<p>El Internet de las Cosas conecta objetos físicos con sensores y actuadores a Internet para que puedan enviar datos y recibir órdenes. MQTT (<i>Message Queuing Telemetry Transport</i>) es un protocolo de mensajería ligero, estandarizado por OASIS, basado en el modelo <b>publicación/suscripción</b>: los dispositivos no se comunican directamente entre sí, sino a través de un intermediario llamado <i>broker</i>. Cada mensaje se publica en un <i>tema</i> (topic) y lo reciben todos los clientes suscritos a ese tema (OASIS, 2019). Esto lo hace ideal para microcontroladores con poca memoria y redes inestables. En este proyecto se usa el broker público de HiveMQ: el ESP32 y el servidor se conectan por TCP (puerto 1883) y el navegador por WebSocket seguro (puerto 8884).</p>
+
+<h2>2.3 ESP32, sensores y simulación en Wokwi</h2>
+<p>El ESP32 de Espressif es un microcontrolador de bajo costo con Wi-Fi y Bluetooth integrados, muy usado en prototipos IoT (Espressif Systems, 2023). El sensor DHT22 (AM2302) mide temperatura y humedad relativa con una sola línea de datos digital. Wokwi es un simulador en línea de electrónica que ejecuta el firmware real del ESP32 y le da acceso a Internet a través de una red Wi-Fi virtual (<i>Wokwi-GUEST</i>), por lo que el mismo código podría cargarse luego en una placa física (Wokwi, s.f.).</p>
+
+<h2>2.4 Control de temperatura por termostato</h2>
+<p>Las neveras domésticas usan un control de tipo encendido/apagado (<i>on-off</i>): el compresor se enciende cuando la temperatura supera el valor deseado y se apaga cuando lo alcanza. Para evitar que el compresor se prenda y se apague continuamente alrededor del valor objetivo, se agrega una <b>histéresis</b>, es decir, un margen por encima y por debajo del objetivo (Åström y Murray, 2008). Como el sensor de Wokwi solo cambia cuando el usuario lo modifica a mano, el firmware calcula la temperatura interior con un <b>modelo térmico</b> sencillo, una especie de gemelo digital: el compresor retira calor y el calor de la cocina entra poco a poco, mucho más rápido si la puerta está abierta.</p>
+
+<h2>2.5 Visión por computador: detección y reconocimiento de alimentos</h2>
+<p>El proyecto usa dos enfoques complementarios:</p>
+<ul>
+<li><b>Detección de objetos en tiempo real (COCO-SSD):</b> SSD (<i>Single Shot MultiBox Detector</i>) localiza y clasifica objetos en una sola pasada de la red (Liu et al., 2016). El modelo COCO-SSD está entrenado con el conjunto COCO, que incluye categorías como banano, manzana, naranja, brócoli, zanahoria, botella y taza (Lin et al., 2014), y usa como base la red ligera MobileNetV2 (Sandler et al., 2018). Se ejecuta en el navegador con TensorFlow.js (Smilkov et al., 2019), lo que permite dibujar los recuadros de detección sobre el video sin enviar imágenes a un servidor.</li>
+<li><b>Reconocimiento por descripción en texto (CLIP):</b> CLIP aprende a relacionar imágenes con frases en lenguaje natural, por lo que puede clasificar una foto entre categorías que solo se describen con texto, sin entrenamiento adicional (<i>zero-shot</i>) (Radford et al., 2021). Esto permitió reconocer productos que no están en COCO, como leche, huevos, queso o arepas.</li>
+</ul>
+
+<h2>2.6 Reconocimiento de gestos y de voz</h2>
+<p>MediaPipe es un marco de Google para construir procesos de percepción en tiempo real (Lugaresi et al., 2019). Su modelo de manos estima 21 puntos de referencia de la mano a partir de una cámara común (Zhang et al., 2020), y el <i>Gesture Recognizer</i> clasifica gestos como mano abierta, pulgar arriba, pulgar abajo, dedos en V o índice arriba. Para la voz se usa el reconocimiento de Google a través de la librería SpeechRecognition (voz a texto) y gTTS y la API <i>Web Speech</i> del navegador para la respuesta hablada (texto a voz).</p>
+
+<!-- ===================== D4. REQUERIMIENTOS ===================== -->
+<h1>3. Requerimientos y casos de uso</h1>
+<h2>3.1 Requerimientos funcionales</h2>
+<table>
+<tr><th>ID</th><th>Requerimiento</th></tr>
+<tr><td>RF1</td><td>El ESP32 debe medir la temperatura y humedad de la cocina y detectar si la puerta está abierta o cerrada.</td></tr>
+<tr><td>RF2</td><td>El ESP32 debe publicar su estado (temperatura interior, objetivo, puerta, compresor, alarma y texto de la pantalla) cada 2 segundos por MQTT.</td></tr>
+<tr><td>RF3</td><td>El ESP32 debe recibir y ejecutar órdenes de la aplicación: cambiar el objetivo del termostato, encender o apagar el compresor, abrir o cerrar la puerta (simulación), silenciar la alarma y mostrar mensajes en la LCD.</td></tr>
+<tr><td>RF4</td><td>El sistema debe activar una alarma (LED rojo, buzzer, aviso en la app y notificación al celular) si la puerta permanece abierta más de 10 segundos o si la temperatura supera el límite.</td></tr>
+<tr><td>RF5</td><td>La aplicación debe tener al menos dos páginas: Monitoreo y Despensa.</td></tr>
+<tr><td>RF6</td><td>La usuaria debe poder registrar alimentos con la cámara, con una foto, con un enlace, por voz o por texto.</td></tr>
+<tr><td>RF7</td><td>La aplicación debe calcular los días de vida útil restantes de cada alimento, responder preguntas como "¿cuándo vence la leche?" y sugerir recetas con lo que está por vencer.</td></tr>
+<tr><td>RF8</td><td>La aplicación debe permitir controlar el termostato con gestos de la mano.</td></tr>
+<tr><td>RF9</td><td>La aplicación debe estimar el consumo de energía y su costo según el tiempo de compresor encendido y de puerta abierta.</td></tr>
+</table>
+
+<h2>3.2 Requerimientos no funcionales</h2>
+<table>
+<tr><th>ID</th><th>Requerimiento</th></tr>
+<tr><td>RNF1</td><td><b>Tiempo real:</b> los datos deben verse en la aplicación con un retraso menor a 3 segundos.</td></tr>
+<tr><td>RNF2</td><td><b>Usabilidad:</b> interfaz clara, en español, con íconos, estados explicados en palabras y retroalimentación visual, sonora y hablada para cada acción.</td></tr>
+<tr><td>RNF3</td><td><b>Accesibilidad multimodal:</b> cada acción importante debe poder hacerse por al menos dos canales distintos.</td></tr>
+<tr><td>RNF4</td><td><b>Privacidad:</b> la detección de objetos y de gestos se ejecuta en el navegador; las imágenes de la cámara no se envían a un servidor.</td></tr>
+<tr><td>RNF5</td><td><b>Disponibilidad:</b> la aplicación está publicada en Streamlit Cloud y el código en un repositorio público de GitHub.</td></tr>
+</table>
+
+<h2>3.3 Casos de uso</h2>
+<table>
+<tr><th>Caso de uso</th><th>Actor</th><th>Descripción y modalidad</th></tr>
+<tr><td>CU1. Vigilar la nevera a distancia</td><td>Usuaria</td><td>Abre la página Monitoreo y ve la temperatura interior, el objetivo, el estado de la puerta y del compresor, y la réplica de la pantalla LCD (visual).</td></tr>
+<tr><td>CU2. Recibir una alerta</td><td>Sistema → usuaria</td><td>Si la puerta queda abierta más de 10 s o la temperatura supera el límite, suena el buzzer, la app reproduce una sirena y llega una notificación push al celular (sonora, visual y móvil).</td></tr>
+<tr><td>CU3. Ajustar la temperatura</td><td>Usuaria</td><td>Sube o baja el objetivo del termostato con botones (− / +), con la voz ("baja la temperatura") o con gestos (pulgar arriba o abajo). La app confirma en voz alta y en la pantalla.</td></tr>
+<tr><td>CU4. Registrar un alimento</td><td>Usuaria</td><td>Muestra el alimento a la cámara (escáner en vivo o foto), sube una imagen, pega un enlace o dice "agrega leche". El alimento aparece en el inventario y en la LCD de la nevera.</td></tr>
+<tr><td>CU5. Preguntar por un vencimiento</td><td>Usuaria</td><td>Escribe o dice "¿cuándo vence la leche?". La app responde con voz y texto, y la LCD muestra "Leche / Vence en 1 d".</td></tr>
+<tr><td>CU6. Decidir qué cocinar</td><td>Usuaria</td><td>Consulta la pestaña Recetas o pregunta "¿qué puedo cocinar?". La app sugiere recetas que usan primero lo que está por vencer.</td></tr>
+<tr><td>CU7. Simular la puerta abierta</td><td>Usuaria</td><td>Abre la puerta desde la app (o con el interruptor de Wokwi) para probar que la temperatura sube y que se activa la alarma.</td></tr>
+</table>
+
+<!-- ===================== D5. ARQUITECTURA ===================== -->
+<h1>4. Arquitectura del sistema</h1>
+<p>El sistema tiene cuatro partes: el ESP32 simulado en Wokwi, el broker MQTT, el servidor de la aplicación en Streamlit Cloud y el navegador de la usuaria, donde corren la interfaz, la simulación embebida y los modelos de visión y gestos. Las alertas llegan al celular mediante el servicio ntfy.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/arquitectura.png" width="640"></div>
+<p class="pie">Figura 1. Arquitectura del sistema Nevera Inteligente. Elaboración propia.</p>
+
+<h2>4.1 Temas MQTT y formato de los mensajes</h2>
+<table>
+<tr><th>Tema</th><th>Publica</th><th>Se suscribe</th><th>Contenido</th></tr>
+<tr><td>nevera_ma_eafit/datos</td><td>ESP32</td><td>Servidor y navegador</td><td>JSON con temperatura interior, humedad, temperatura de la cocina, puerta, compresor, modo, objetivo, límite, alarma y texto de la LCD.</td></tr>
+<tr><td>nevera_ma_eafit/cmd</td><td>Servidor y navegador</td><td>ESP32</td><td>Órdenes de texto: OBJETIVO_MAS, OBJETIVO_MENOS, COMPRESOR_ON/OFF, MODO_AUTO, PUERTA_ABRIR/CERRAR, SILENCIAR, PROBAR_ALARMA, UMBRAL:x, MENSAJE:texto.</td></tr>
+<tr><td>nevera_ma_eafit/inventario</td><td>Navegador (escáner)</td><td>Servidor</td><td>AGREGAR:Nombre, para registrar alimentos detectados en vivo.</td></tr>
+</table>
+<p>Ejemplo de mensaje publicado por el ESP32:</p>
+<p class="codigo">{"temp":3.83,"hum":55,"ambiente":24,"puerta":false,"seg_abierta":0,"compresor":true,"modo_auto":true,"umbral":5,"objetivo":4,"alarma":false,"motivo":"","silenciada":false,"puerta_remota":false,"lcd1":"Leche","lcd2":"Vence en 1 d"}</p>
+
+<h2>4.2 Tecnologías utilizadas</h2>
+<table>
+<tr><th>Capa</th><th>Tecnología</th><th>Uso</th></tr>
+<tr><td>Hardware simulado</td><td>Wokwi, ESP32, Arduino (C++)</td><td>Circuito y firmware de la nevera.</td></tr>
+<tr><td>Comunicación</td><td>MQTT (PubSubClient, paho-mqtt, mqtt.js), HiveMQ</td><td>Datos y órdenes en tiempo real.</td></tr>
+<tr><td>Aplicación</td><td>Python, Streamlit, Streamlit Cloud</td><td>Interfaz multipágina, servidor y despliegue.</td></tr>
+<tr><td>Inteligencia artificial</td><td>CLIP (transformers + PyTorch), TensorFlow.js con COCO-SSD, MediaPipe</td><td>Reconocimiento de alimentos y de gestos.</td></tr>
+<tr><td>Voz</td><td>SpeechRecognition, gTTS, Web Speech API</td><td>Comandos de voz y respuestas habladas.</td></tr>
+<tr><td>Notificaciones</td><td>ntfy</td><td>Alertas push al celular.</td></tr>
+<tr><td>Código</td><td>GitHub</td><td>Repositorio público con todo el proyecto.</td></tr>
+</table>
+
+<!-- ===================== D6. HARDWARE ===================== -->
+<h1>5. Hardware simulado en Wokwi</h1>
+<h2>5.1 Componentes y conexiones</h2>
+<table>
+<tr><th>Componente</th><th>Pin del ESP32</th><th>Función</th></tr>
+<tr><td>Sensor DHT22</td><td>GPIO 15</td><td>Temperatura y humedad de la cocina.</td></tr>
+<tr><td>Interruptor deslizante</td><td>GPIO 4</td><td>Simula la puerta (abierta o cerrada).</td></tr>
+<tr><td>LED azul + resistencia 220 Ω</td><td>GPIO 5</td><td>Compresor encendido.</td></tr>
+<tr><td>LED rojo + resistencia 220 Ω</td><td>GPIO 2</td><td>Alarma (parpadea).</td></tr>
+<tr><td>Buzzer</td><td>GPIO 18</td><td>Alarma sonora.</td></tr>
+<tr><td>Pantalla LCD 16x2 (I2C)</td><td>SDA 21, SCL 22</td><td>Temperatura, objetivo, estado y mensajes.</td></tr>
+</table>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_wokwi_termostato.jpg" width="420"></div>
+<p class="pie">Figura 2. Circuito en Wokwi enfriando hacia un objetivo de 2 °C: la pantalla muestra "Enfriando..." y el LED azul del compresor está encendido.</p>
+
+<h2>5.2 Firmware</h2>
+<p>El firmware se conecta a la red Wi-Fi de Wokwi y al broker MQTT, se suscribe al tema de órdenes y, cada dos segundos, lee los sensores, actualiza el modelo térmico, decide el estado del compresor y de la alarma, actualiza la pantalla y publica el estado en formato JSON. Usa las librerías PubSubClient, ArduinoJson, DHT sensor library for ESPx y LiquidCrystal I2C.</p>
+<p><b>Recepción de órdenes.</b> La función <i>callback</i> se ejecuta cada vez que llega un mensaje al tema de órdenes y modifica el estado de la nevera:</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/codigo_ordenes_esp32.png" width="640"></div>
+<p class="pie">Figura 3. Recepción de órdenes desde la aplicación en el ESP32.</p>
+<p><b>Modelo térmico y termostato.</b> Con el compresor encendido, la temperatura interior baja 0,3 °C cada dos segundos; además, entra una fracción del calor de la cocina (0,6 % de la diferencia con la puerta cerrada y 3,5 % con la puerta abierta). En modo automático, el compresor se enciende si la temperatura supera el objetivo en más de 0,3 °C y se apaga cuando baja 0,3 °C por debajo (histéresis). La alarma se activa si la puerta lleva más de 10 segundos abierta o si la temperatura supera el límite.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/codigo_modelo_termico.png" width="640"></div>
+<p class="pie">Figura 4. Modelo térmico, alarma y termostato con histéresis en el firmware.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/modelo_termico.png" width="640"></div>
+<p class="pie">Figura 5. Respuesta del modelo térmico calculada con las mismas ecuaciones del firmware: al bajar el objetivo a 2 °C el compresor enfría hasta alcanzarlo; al abrir la puerta la temperatura sube rápido y supera el límite de alarma.</p>
+
+<!-- ===================== D7. APLICACIÓN ===================== -->
+<h1>6. Aplicación en Streamlit</h1>
+<p>La aplicación está publicada en <b>https://nevera-inteligente-eafit.streamlit.app</b>. Tiene tres páginas —Inicio, Monitoreo y Despensa— y un panel lateral con la simulación de Wokwi embebida. Se embebió porque Wokwi pausa la simulación cuando su pestaña no está visible; así la nevera y la aplicación siempre se ven y funcionan al mismo tiempo. El diseño usa tarjetas, íconos <i>Material Symbols</i> y textos que explican el estado en palabras.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_inicio.jpg" width="640"></div>
+<p class="pie">Figura 6. Página de inicio con los dos ambientes de interacción.</p>
+
+<h2>6.1 Ambiente 1: Monitoreo</h2>
+<p>Muestra en tiempo real el estado de la nevera: la temperatura interior en un indicador circular, una frase que explica qué está pasando ("Enfriando: 4,2 °C → objetivo 4 °C"), la temperatura de la cocina, la puerta, el compresor y una réplica en vivo de la pantalla LCD del ESP32. Junto a la pantalla hay un asistente donde se escriben o se dicen preguntas, órdenes o mensajes para la nevera. Debajo, en pestañas, están los controles (termostato, compresor, puerta y alarma), el control por gestos, la energía con el historial y las alertas al celular.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_monitoreo.jpg" width="640"></div>
+<p class="pie">Figura 7. Página Monitoreo con la simulación de Wokwi embebida: la LCD virtual de la app coincide con la de Wokwi.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_controles.jpg" width="620"></div>
+<p class="pie">Figura 8. Controles: termostato, compresor, puerta y alarma.</p>
+
+<h3>Control por gestos</h3>
+<p>Con MediaPipe, la cámara reconoce la mano y la convierte en un termostato. Para evitar órdenes accidentales, el gesto debe sostenerse un segundo (una barra muestra el avance) y luego hay una espera de tres segundos. Cada gesto tiene un sonido propio; al cambiar el objetivo, la aplicación dice en voz alta el nuevo valor y la temperatura actual, y lo muestra en grande sobre el video.</p>
+<table>
+<tr><th>Gesto</th><th>Acción</th></tr>
+<tr><td>Pulgar arriba</td><td>Sube 1 °C la temperatura objetivo.</td></tr>
+<tr><td>Pulgar abajo</td><td>Baja 1 °C la temperatura objetivo.</td></tr>
+<tr><td>Mano abierta</td><td>Silencia la alarma.</td></tr>
+<tr><td>Dedos en V</td><td>Activa el modo automático.</td></tr>
+<tr><td>Índice arriba</td><td>Lee en voz alta el estado de la nevera.</td></tr>
+</table>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_gestos.jpg" width="620"></div>
+<p class="pie">Figura 9. Panel de control por gestos con la lectura en vivo de la nevera.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/codigo_gestos.png" width="600"></div>
+<p class="pie">Figura 10. Relación entre los gestos de MediaPipe, las órdenes MQTT y los sonidos de cada gesto.</p>
+
+<h3>Energía, historial y alertas</h3>
+<p>La aplicación acumula el tiempo de compresor encendido y de puerta abierta del día, y estima la energía y su costo con supuestos explícitos: 120 W de potencia del compresor, 2 Wh adicionales por cada minuto de puerta abierta y una tarifa de 950 pesos por kWh. La gráfica compara la temperatura interior con el objetivo. Cuando se activa la alarma, el servidor envía una notificación push al celular mediante ntfy; basta con instalar la aplicación ntfy y suscribirse al tema, o escanear el código QR.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_energia.jpg" width="620"></div>
+<p class="pie">Figura 11. Energía estimada del día e historial de la temperatura interior frente al objetivo durante las pruebas.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_alertas.jpg" width="620"></div>
+<p class="pie">Figura 12. Configuración de las alertas al celular, con el registro de las notificaciones enviadas.</p>
+
+<h2>6.2 Ambiente 2: Despensa</h2>
+<p>Permite registrar alimentos, consultar el inventario con la vida útil de cada uno y obtener recetas. Tiene cuatro pestañas:</p>
+<ul>
+<li><b>Cámara:</b> cuatro formas de ingresar un alimento. El <i>escáner en vivo</i> detecta alimentos con TensorFlow.js y los marca con recuadros e identificadores; anuncia en voz alta lo que ve ("Escaneé manzana") y, al registrarlo, lo confirma y se detiene. Las opciones <i>Cámara</i>, <i>Subir foto</i> y <i>Enlace</i> usan CLIP, que reconoce 34 alimentos, entre ellos leche, huevos y queso.</li>
+<li><b>Voz y texto:</b> comandos como "agrega huevos", "saca la leche", "¿qué hay en la nevera?", "¿cuándo vence el queso?" o "¿qué puedo cocinar?".</li>
+<li><b>Inventario:</b> tarjetas por alimento con su ícono, la fecha de registro y los días que le quedan, en verde, ámbar o rojo según la urgencia. Los productos repetidos se agrupan y un control permite simular el paso de los días.</li>
+<li><b>Recetas:</b> sugerencias que priorizan los ingredientes que vencen pronto, con los pasos y lectura en voz alta.</li>
+</ul>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_escaner.jpg" width="620"></div>
+<p class="pie">Figura 13. Escáner de alimentos en tiempo real.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_clip_leche.jpg" width="440"></div>
+<p class="pie">Figura 14. Reconocimiento con CLIP a partir de un enlace: "Leche" con 99 % de confianza.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_inventario.jpg" width="620"></div>
+<p class="pie">Figura 15. Inventario con los días restantes de cada alimento. La "Bebida" fue registrada con el escáner en vivo.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_recetas.jpg" width="620"></div>
+<p class="pie">Figura 16. Recetas que aprovechan primero los alimentos por vencer.</p>
+
+<h2>6.3 Asistente de la nevera</h2>
+<p>El módulo <i>asistente.py</i> interpreta las frases escritas o habladas en las dos páginas. Normaliza el texto (minúsculas y sin tildes), identifica la intención por palabras clave y ejecuta la acción: envía una orden MQTT, consulta el inventario o sugiere una receta. Responde con texto y voz, y muestra una versión corta en la pantalla LCD de la nevera, escrita en dos líneas y sin tildes porque la LCD no puede mostrarlas.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/codigo_vencimientos.png" width="640"></div>
+<p class="pie">Figura 17. Respuesta a las preguntas de vencimiento en el asistente.</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/cap_asistente.jpg" width="640"></div>
+<p class="pie">Figura 18. Pregunta "cuándo vence la leche": la app responde y la pantalla de Wokwi y la LCD virtual muestran "Leche / Vence en 1 d".</p>
+<p><b>Conexión MQTT en el servidor.</b> Un único cliente MQTT corre en segundo plano y guarda la última lectura, el historial, los contadores de energía y los alimentos que llegan del escáner; cuando detecta que la alarma acaba de activarse, envía la alerta al celular:</p>
+<div class="figura"><img src="https://raw.githubusercontent.com/Marc-Higuita/nevera-inteligente/main/informe/img/codigo_mqtt_streamlit.png" width="640"></div>
+<p class="pie">Figura 19. Recepción de mensajes MQTT en el servidor de Streamlit.</p>
+
+<h2>6.4 Modalidades de interacción</h2>
+<table>
+<tr><th>Modalidad</th><th>Entrada</th><th>Salida</th></tr>
+<tr><td>Táctil / visual</td><td>Botones, controles deslizantes, pestañas</td><td>Indicadores, tarjetas de estado, gráficas, LCD virtual</td></tr>
+<tr><td>Texto</td><td>Asistente, comandos y mensajes para la LCD</td><td>Respuestas escritas, mensajes en la pantalla de la nevera</td></tr>
+<tr><td>Voz</td><td>Grabación con micrófono (SpeechRecognition)</td><td>Respuesta hablada (gTTS y Web Speech)</td></tr>
+<tr><td>Visión</td><td>Escáner en vivo, foto, imagen o enlace</td><td>Recuadros de detección con etiqueta e identificador</td></tr>
+<tr><td>Gestos</td><td>Cinco gestos de la mano (MediaPipe)</td><td>Aviso en el video y en la LCD, confirmación por voz</td></tr>
+<tr><td>Sonido</td><td>—</td><td>Tonos por gesto y por detección, confirmaciones y sirena de alarma</td></tr>
+<tr><td>Física (Wokwi)</td><td>Sensor DHT22 e interruptor de puerta</td><td>LED, buzzer y pantalla LCD</td></tr>
+<tr><td>Móvil</td><td>—</td><td>Notificaciones push en el celular (ntfy)</td></tr>
+</table>
+
+<!-- ===================== D8. PRUEBAS ===================== -->
+<h1>7. Pruebas y resultados</h1>
+<h2>7.1 Pruebas funcionales</h2>
+<table>
+<tr><th>#</th><th>Prueba</th><th>Resultado esperado</th><th>Resultado obtenido</th></tr>
+<tr><td>1</td><td>Datos del ESP32 a la app</td><td>La app muestra temperatura, humedad, puerta y compresor.</td><td>Correcto. Los datos se actualizan cada 2 s y la LCD virtual coincide con la de Wokwi.</td></tr>
+<tr><td>2</td><td>Mensaje de la app a la LCD</td><td>El ESP32 recibe la orden y muestra el texto.</td><td>Correcto. El monitor serie registró "Orden recibida: MENSAJE:Prueba desde Streamlit".</td></tr>
+<tr><td>3</td><td>Termostato (botón −)</td><td>El compresor enciende y la temperatura baja al nuevo objetivo.</td><td>Correcto. Con objetivo de 3 °C la temperatura pasó de 4,4 °C a 3,1 °C en unos 40 s; LED azul encendido y LCD "Enfriando...".</td></tr>
+<tr><td>4</td><td>Gestos (pulgar arriba)</td><td>El ESP32 recibe OBJETIVO_MAS.</td><td>Correcto. El monitor serie registró "Orden recibida: OBJETIVO_MAS" y el objetivo subió de 4 a 6 °C.</td></tr>
+<tr><td>5</td><td>Pregunta "cuándo vence la leche"</td><td>Respuesta con días restantes en la app y en la LCD.</td><td>Correcto. "Leche: le queda 1 día aproximadamente" y LCD "Leche / Vence en 1 d" (Figura 18).</td></tr>
+<tr><td>6</td><td>Reconocimiento con CLIP</td><td>Identificar leche y queso a partir de fotos.</td><td>Correcto. Leche con 99 % y queso con 90 % de confianza.</td></tr>
+<tr><td>7</td><td>Escáner en vivo y registro por MQTT</td><td>El alimento detectado aparece en el inventario.</td><td>Correcto. La "Bebida" registrada con el escáner apareció en el inventario.</td></tr>
+<tr><td>8</td><td>Alerta al celular</td><td>Notificación push cuando se activa la alarma.</td><td>Correcto. Se enviaron notificaciones a las 16:50 y a las 16:56 durante las pruebas.</td></tr>
+<tr><td>9</td><td>Recetas anti-desperdicio</td><td>Priorizar alimentos por vencer.</td><td>Correcto. Primero aparecen recetas con leche, pollo y yogur, los alimentos más próximos a vencer.</td></tr>
+<tr><td>10</td><td>Energía</td><td>Acumular minutos de compresor y estimar el costo.</td><td>Correcto. 19,6 min de compresor, 40 Wh y 38 pesos estimados en la sesión de pruebas (Figura 11).</td></tr>
+</table>
+
+<h2>7.2 Problemas encontrados y soluciones</h2>
+<table>
+<tr><th>Problema</th><th>Causa</th><th>Solución</th></tr>
+<tr><td>La app dejaba de recibir datos.</td><td>Wokwi pausa la simulación cuando su pestaña no está visible.</td><td>Se embebió la simulación en el panel lateral de la app.</td></tr>
+<tr><td>Los datos se mezclaban.</td><td>Había dos simulaciones publicando en el mismo tema.</td><td>Se usa una sola simulación y la app avisa si el ESP32 tiene una versión anterior del código.</td></tr>
+<tr><td>El texto de la LCD no llegaba.</td><td>PubSubClient limita los mensajes a 256 bytes por defecto.</td><td>Se amplió el búfer con setBufferSize(768).</td></tr>
+<tr><td>La temperatura nunca cambiaba.</td><td>El sensor de Wokwi solo cambia de forma manual.</td><td>Se creó el modelo térmico interior; el DHT22 mide la cocina.</td></tr>
+<tr><td>No sonaban los efectos de sonido.</td><td>Chrome bloquea el audio hasta que la persona hace clic.</td><td>El audio se activa en el mismo clic del usuario.</td></tr>
+<tr><td>Caracteres extraños en la LCD.</td><td>La pantalla no tiene tildes.</td><td>Los mensajes se normalizan a ASCII y se escriben en dos líneas.</td></tr>
+<tr><td>Falso positivo "nevera" en el escáner.</td><td>COCO-SSD confundía la pared con un refrigerador.</td><td>Se eliminó esa categoría y se subió el umbral de confianza a 50 %.</td></tr>
+</table>
+
+<!-- ===================== D9. CONCLUSIONES ===================== -->
+<h1>8. Conclusiones</h1>
+<ul>
+<li>El sistema cumple el objetivo general: la nevera simulada y la aplicación se comunican en los dos sentidos por MQTT, y desde la aplicación se puede vigilar la nevera, controlarla y gestionar los alimentos.</li>
+<li>La multimodalidad aporta valor real: la misma acción se puede hacer con un botón, con la voz, con un gesto o con texto, según lo que resulte más cómodo en cada momento. La retroalimentación también es múltiple (LCD, voz, sonido, notificación), lo que hace evidente que cada orden se ejecutó.</li>
+<li>El modelo térmico fue clave para que el sistema se entendiera: al ver cómo la temperatura baja hasta el objetivo o sube al abrir la puerta, el efecto de cada interacción se hace visible.</li>
+<li>Combinar dos modelos de visión fue útil: COCO-SSD permite detección en tiempo real en el navegador, y CLIP reconoce productos que no están en las categorías de COCO, como la leche o los huevos.</li>
+<li>Las alertas al celular responden directamente al problema planteado: aun con la casa sola, la familia se entera a tiempo si la puerta quedó abierta o si la nevera se calienta.</li>
+</ul>
+
+<h2>8.1 Trabajo futuro</h2>
+<ul>
+<li>Montar el circuito con un ESP32 y un sensor físicos dentro de una nevera real, con un sensor magnético de puerta.</li>
+<li>Guardar el inventario y el historial en una base de datos para que se conserven al reiniciar la aplicación.</li>
+<li>Entrenar un modelo propio con fotos de los productos de la casa para mejorar el reconocimiento.</li>
+<li>Leer la fecha de vencimiento impresa en los empaques con reconocimiento óptico de caracteres (OCR).</li>
+<li>Agregar perfiles para varias personas del hogar y notificaciones por WhatsApp.</li>
+</ul>
+
+<!-- ===================== D10. REFERENCIAS Y ANEXOS ===================== -->
+<h1>Referencias</h1>
+<p>Åström, K. J., y Murray, R. M. (2008). <i>Feedback systems: An introduction for scientists and engineers</i>. Princeton University Press.</p>
+<p>Bolt, R. A. (1980). "Put-that-there": Voice and gesture at the graphics interface. <i>ACM SIGGRAPH Computer Graphics, 14</i>(3), 262–270. https://doi.org/10.1145/965105.807503</p>
+<p>Espressif Systems. (2023). <i>ESP32 series datasheet</i>. https://www.espressif.com/en/support/documents/technical-documents</p>
+<p>Lin, T.-Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan, D., Dollár, P., y Zitnick, C. L. (2014). Microsoft COCO: Common objects in context. En <i>European Conference on Computer Vision (ECCV)</i> (pp. 740–755). Springer.</p>
+<p>Liu, W., Anguelov, D., Erhan, D., Szegedy, C., Reed, S., Fu, C.-Y., y Berg, A. C. (2016). SSD: Single shot multibox detector. En <i>European Conference on Computer Vision (ECCV)</i> (pp. 21–37). Springer.</p>
+<p>Lugaresi, C., Tang, J., Nash, H., McClanahan, C., Uboweja, E., Hays, M., Zhang, F., Chang, C.-L., Yong, M. G., Lee, J., Chang, W.-T., Hua, W., Georg, M., y Grundmann, M. (2019). <i>MediaPipe: A framework for building perception pipelines</i>. arXiv:1906.08172.</p>
+<p>OASIS. (2019). <i>MQTT Version 5.0</i> (OASIS Standard). https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html</p>
+<p>Oviatt, S. (1999). Ten myths of multimodal interaction. <i>Communications of the ACM, 42</i>(11), 74–81.</p>
+<p>Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J., Krueger, G., y Sutskever, I. (2021). Learning transferable visual models from natural language supervision. En <i>Proceedings of the 38th International Conference on Machine Learning</i> (pp. 8748–8763). PMLR.</p>
+<p>Sandler, M., Howard, A., Zhu, M., Zhmoginov, A., y Chen, L.-C. (2018). MobileNetV2: Inverted residuals and linear bottlenecks. En <i>IEEE Conference on Computer Vision and Pattern Recognition (CVPR)</i> (pp. 4510–4520).</p>
+<p>Smilkov, D., Thorat, N., Assogba, Y., Yuan, A., Kreeger, N., Yu, P., et al. (2019). TensorFlow.js: Machine learning for the web and beyond. En <i>Proceedings of Machine Learning and Systems (MLSys)</i>.</p>
+<p>Streamlit. (s.f.). <i>Streamlit documentation</i>. https://docs.streamlit.io</p>
+<p>U.S. Food and Drug Administration [FDA]. (s.f.). <i>Power outages: Key tips for consumers about food safety</i>. https://www.fda.gov/food/emergencies/power-outages-key-tips-consumers-about-food-safety</p>
+<p>United Nations Environment Programme [UNEP]. (2024). <i>Food Waste Index Report 2024. Think eat save: Tracking progress to halve global food waste</i>. https://wedocs.unep.org/handle/20.500.11822/45230</p>
+<p>Wokwi. (s.f.). <i>Wokwi documentation: ESP32 simulation and Wi-Fi networking</i>. https://docs.wokwi.com</p>
+<p>Zhang, F., Bazarevsky, V., Vakunov, A., Tkachenka, A., Sung, G., Chang, C.-L., y Grundmann, M. (2020). <i>MediaPipe Hands: On-device real-time hand tracking</i>. arXiv:2006.10214.</p>
+
+<h1>Anexos</h1>
+<h2>Anexo A. Enlaces del proyecto</h2>
+<table>
+<tr><th>Recurso</th><th>Enlace</th></tr>
+<tr><td>Aplicación en Streamlit Cloud</td><td>https://nevera-inteligente-eafit.streamlit.app</td></tr>
+<tr><td>Simulación en Wokwi</td><td>https://wokwi.com/projects/481057259362016257</td></tr>
+<tr><td>Repositorio en GitHub</td><td>https://github.com/Marc-Higuita/nevera-inteligente</td></tr>
+<tr><td>Video de demostración</td><td>[Pegar aquí el enlace del video]</td></tr>
+</table>
+<h2>Anexo B. Estructura del repositorio</h2>
+<table>
+<tr><th>Archivo</th><th>Contenido</th></tr>
+<tr><td>app.py</td><td>Navegación multipágina y simulación de Wokwi embebida.</td></tr>
+<tr><td>paginas/inicio.py, monitoreo.py, despensa.py</td><td>Los tres ambientes de la aplicación.</td></tr>
+<tr><td>asistente.py</td><td>Inventario, recetas, intérprete de comandos y voz.</td></tr>
+<tr><td>mqtt_utils.py</td><td>Cliente MQTT, alertas ntfy y cálculo de energía.</td></tr>
+<tr><td>estilo.py</td><td>Sistema visual: íconos, tarjetas, indicadores y LCD virtual.</td></tr>
+<tr><td>componentes/escaner.html, gestos.html</td><td>Escáner en vivo (TensorFlow.js) y control por gestos (MediaPipe).</td></tr>
+<tr><td>wokwi/sketch.ino, diagram.json, libraries.txt</td><td>Firmware, circuito y librerías del ESP32.</td></tr>
+</table>
+<h2>Anexo C. Guía rápida de uso</h2>
+<ol>
+<li>Abrir la aplicación y pulsar ▶ en la simulación de Wokwi del panel lateral; esperar a que la pantalla muestre la temperatura.</li>
+<li>En Monitoreo, bajar el objetivo con el botón − y observar cómo enfría la nevera.</li>
+<li>Abrir la puerta desde Controles o con el interruptor de Wokwi y verificar la alarma y la notificación en el celular.</li>
+<li>En la pestaña Gestos, activar la cámara y usar el pulgar arriba o abajo.</li>
+<li>En Despensa, escanear un alimento, registrarlo y preguntar cuándo vence.</li>
+</ol>
+
+</body>
+</html>
