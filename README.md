@@ -6,6 +6,11 @@ Esta app conecta una nevera simulada en **Wokwi (ESP32)** con una aplicación en
 por **MQTT**, en las dos direcciones. Así se puede vigilar la temperatura y la puerta,
 controlar el enfriamiento y llevar el inventario de alimentos con la **cámara** y la **voz**.
 
+## Enlaces
+
+- **App en Streamlit Cloud:** https://nevera-inteligente-eafit.streamlit.app
+- **Simulación en Wokwi:** https://wokwi.com/projects/481057259362016257
+
 ## Arquitectura
 
 ```
