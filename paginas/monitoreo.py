@@ -159,15 +159,22 @@ panel_en_vivo()
 # ---------- Controles (Streamlit -> ESP32) ----------
 st.write("")
 st.markdown("#### Controles")
+@st.fragment(run_every=2)
+def valor_objetivo():
+    """Muestra el objetivo real que reporta el ESP32 (se actualiza solo)."""
+    d = leer_estado().ultimo or {}
+    actual = d.get("objetivo", 4.0)
+    st.markdown(f"<div style='font-size:2.2rem;font-weight:800;text-align:center;margin:.2rem 0'>"
+                f"{actual:.0f} °C</div><div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>"
+                f"Objetivo · ahora {d.get('temp', 0):.1f} °C</div>", unsafe_allow_html=True)
+
+
 col0, col1, col2, col3 = st.columns(4, gap="small")
 
 with col0:
     with st.container(border=True):
         st.markdown("**:material/thermostat: Termostato**")
-        actual = (leer_estado().ultimo or {}).get("objetivo", 4.0)
-        st.markdown(f"<div style='font-size:2.2rem;font-weight:800;text-align:center;margin:.2rem 0'>"
-                    f"{actual:.0f} °C</div><div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>"
-                    f"Temperatura objetivo</div>", unsafe_allow_html=True)
+        valor_objetivo()
         b1, b2 = st.columns(2)
         if b1.button("", icon=":material/remove:", key="obj_menos", use_container_width=True,
                      help="Bajar 1 °C"):
