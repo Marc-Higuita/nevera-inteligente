@@ -18,10 +18,10 @@
   .btn.verde { background: #39FF6A; color: #04210C; }
   .btn.oscuro { background: #1A2128; color: #DFFFE6; border: 1px solid #2B3640; }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
-  .panel { background: #0B1015; border-radius: 22px; padding: 16px; display: flex; flex-direction: column;
-           gap: 12px; border: 1px solid #1C262E; }
+  .panel { background: #0B1015; border-radius: 22px; padding: 14px; display: flex; flex-direction: column;
+           gap: 9px; border: 1px solid #1C262E; }
   .rotulo { font-size: .66rem; color: #6E8580; letter-spacing: .12em; }
-  .zoom { width: 100%; aspect-ratio: 1; background: #070A0D; border: 2px solid #39FF6A; border-radius: 10px; }
+  .zoom { width: 100%; aspect-ratio: 4/3; background: #070A0D; border: 2px solid #39FF6A; border-radius: 10px; }
   .barra-top { height: 14px; background: #39FF6A; border-radius: 8px 8px 0 0; margin-bottom: -4px;
                background-image: repeating-linear-gradient(90deg, #04210C 0 2px, transparent 2px 4px, #04210C 4px 5px, transparent 5px 8px);
                background-size: 60px 8px; background-repeat: no-repeat; background-position: 6px 3px; }
@@ -52,7 +52,7 @@
   <div class="panel">
     <div class="fila"><span class="rotulo">DETECCIÓN PRINCIPAL</span>
       <span class="pill"><i id="luz"></i><span id="mqtt">MQTT</span></span></div>
-    <div><div class="barra-top"></div><canvas class="zoom" id="zoom" width="300" height="300"></canvas></div>
+    <div><div class="barra-top"></div><canvas class="zoom" id="zoom" width="300" height="225"></canvas></div>
     <div>
       <div class="rotulo" id="idobj">ID: —</div>
       <div class="nombre" id="nombre">Sin objetivo</div>
@@ -76,7 +76,7 @@ const TOPIC_CMD = "__TOPIC_CMD__", TOPIC_INV = "__TOPIC_INV__", BROKER_WS = "__B
 const ES = {
   banana: "Banano", apple: "Manzana", orange: "Naranja", broccoli: "Brócoli", carrot: "Zanahoria",
   sandwich: "Sándwich", "hot dog": "Salchicha", pizza: "Pizza", donut: "Dona", cake: "Torta",
-  bottle: "Bebida", cup: "Taza", bowl: "Recipiente", "wine glass": "Copa", refrigerator: "Nevera",
+  bottle: "Bebida", cup: "Taza", bowl: "Recipiente", "wine glass": "Copa",
 };
 const VERDE = "#39FF6A";
 const $ = id => document.getElementById(id);
@@ -133,7 +133,7 @@ async function ciclo() {
   if (!activo) return;
   if (video.readyState >= 2) {
     if (capa.width !== video.videoWidth) { capa.width = video.videoWidth; capa.height = video.videoHeight; }
-    const preds = (await modelo.detect(video, 12, 0.4)).filter(p => ES[p.class]);
+    const preds = (await modelo.detect(video, 12, 0.5)).filter(p => ES[p.class]);
     dibujar(preds);
     cuadros++;
     const ahora = performance.now();
@@ -202,16 +202,15 @@ function dibujar(preds) {
 }
 
 function actualizarPanel(preds) {
-  zctx.fillStyle = "#070A0D"; zctx.fillRect(0, 0, 300, 300);
+  zctx.fillStyle = "#070A0D"; zctx.fillRect(0, 0, 300, 225);
   if (!principal) {
     $("nombre").textContent = "Buscando…"; $("idobj").textContent = "ID: —";
     $("conf").textContent = "0%"; $("medidor").style.width = "0%";
     $("lista").textContent = "Acerca un alimento a la cámara."; $("registrar").disabled = true;
     return;
   }
-  const [x, y, w, h] = principal.bbox, lado = Math.max(w, h) * 1.15;
-  const cx = x + w / 2 - lado / 2, cy = y + h / 2 - lado / 2;
-  zctx.drawImage(video, cx, cy, lado, lado, 0, 0, 300, 300);
+  const [x, y, w, h] = principal.bbox, an = Math.max(w, h * 4 / 3) * 1.15, al = an * 3 / 4;
+  zctx.drawImage(video, x + w / 2 - an / 2, y + h / 2 - al / 2, an, al, 0, 0, 300, 225);
   $("nombre").textContent = principal.nombre;
   $("idobj").textContent = "ID: " + principal.id;
   const pc = Math.round(principal.score * 100);

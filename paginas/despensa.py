@@ -262,7 +262,7 @@ with tab_cam:
     origen = st.segmented_control("Origen de la imagen", ["Escáner en vivo", "Cámara", "Subir foto", "Enlace"],
                                   default="Escáner en vivo", label_visibility="collapsed")
     if origen == "Escáner en vivo":
-        components.html(html_escaner(), height=560, scrolling=False)
+        components.html(html_escaner(), height=640, scrolling=False)
         st.caption("Detección en tiempo real con TensorFlow.js (COCO-SSD). Para leche, huevos, queso y "
                    "otros productos sin categoría propia, usa la opción Cámara.")
     izq, der = st.columns([1.2, 1], gap="large")
