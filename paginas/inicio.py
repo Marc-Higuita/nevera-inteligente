@@ -1,51 +1,57 @@
 import streamlit as st
 
-from estilo import encabezado
+from estilo import AZUL, AZUL_SUAVE, VERDE, barra_superior, encabezado, html, ic
 from mqtt_utils import BROKER, leer_estado
 
-encabezado("🧊 Nevera Inteligente",
-           "Cuida tus alimentos con sensores, cámara y voz — ESP32 en Wokwi + Streamlit por MQTT")
+estado_mqtt = leer_estado()
+barra_superior(estado_mqtt.conectado)
+encabezado("Nevera Inteligente",
+           "Monitoreo de temperatura, control remoto y gestión de alimentos mediante sensores, cámara y voz.",
+           "kitchen")
 
-st.markdown(
-    "En muchas casas se pierde comida porque la nevera queda abierta, la temperatura sube "
-    "sin que nadie lo note o se nos olvida qué hay adentro hasta que se vence. "
-    "Esta app conecta una **nevera simulada** con dos ambientes de interacción:"
-)
-
-col1, col2 = st.columns(2, gap="large")
+col1, col2 = st.columns(2, gap="medium")
 with col1:
-    st.markdown(
-        """<div class="tarjeta">
-<h3>🌡️ Monitoreo de la nevera</h3>
-<p>Temperatura y humedad en vivo, aviso de puerta abierta y control del enfriamiento.</p>
-<span class="chip">Botones</span><span class="chip">Slider</span>
-<span class="chip">Texto a la LCD</span><span class="chip">Gráfica en vivo</span>
-</div>""",
-        unsafe_allow_html=True,
-    )
-    st.page_link("paginas/monitoreo.py", label="Abrir monitoreo →", icon="🌡️")
+    html(f"""
+    <div class="card">
+      <div class="titulo"><span class="icono-circ" style="background:{AZUL_SUAVE};color:{AZUL}">{ic('thermostat')}</span>Monitoreo</div>
+      <div class="etiqueta">Temperatura y humedad en tiempo real, detección de puerta abierta,
+      alarmas y control del enfriamiento desde la aplicación.</div>
+      <div class="chips">
+        <span class="chip">{ic('touch_app', 16)}Botones</span>
+        <span class="chip">{ic('tune', 16)}Controles deslizantes</span>
+        <span class="chip">{ic('monitoring', 16)}Gráfica en vivo</span>
+        <span class="chip">{ic('notifications_active', 16)}Alertas</span>
+      </div>
+    </div>""")
+    st.page_link("paginas/monitoreo.py", label="Abrir monitoreo", icon=":material/arrow_forward:")
 with col2:
-    st.markdown(
-        """<div class="tarjeta">
-<h3>🥕 Despensa inteligente</h3>
-<p>La cámara reconoce el alimento, la voz lo agrega y la app te avisa qué consumir primero.</p>
-<span class="chip">Cámara + IA</span><span class="chip">Voz</span>
-<span class="chip">Respuesta hablada</span><span class="chip">Vencimientos</span>
-</div>""",
-        unsafe_allow_html=True,
-    )
-    st.page_link("paginas/despensa.py", label="Abrir despensa →", icon="🥕")
+    html(f"""
+    <div class="card">
+      <div class="titulo"><span class="icono-circ" style="background:#E7F7EF;color:{VERDE}">{ic('shopping_basket')}</span>Despensa</div>
+      <div class="etiqueta">Reconocimiento de alimentos con la cámara, comandos de voz,
+      respuestas habladas y seguimiento de la vida útil de cada producto.</div>
+      <div class="chips">
+        <span class="chip">{ic('photo_camera', 16)}Cámara con IA</span>
+        <span class="chip">{ic('mic', 16)}Voz</span>
+        <span class="chip">{ic('volume_up', 16)}Respuesta hablada</span>
+        <span class="chip">{ic('event_available', 16)}Vencimientos</span>
+      </div>
+    </div>""")
+    st.page_link("paginas/despensa.py", label="Abrir despensa", icon=":material/arrow_forward:")
 
 st.write("")
-st.markdown("#### ¿Cómo funciona?")
-c1, c2, c3 = st.columns(3)
-c1.markdown("**1. Sensa** \nEl ESP32 mide temperatura, humedad y el estado de la puerta.")
-c2.markdown("**2. Comunica** \nLos datos viajan por MQTT a esta app, y las órdenes vuelven a la nevera.")
-c3.markdown("**3. Actúa** \nEnfriamiento, alarma, buzzer y mensajes en la pantalla LCD.")
+c1, c2, c3 = st.columns(3, gap="medium")
+pasos = [
+    (c1, "sensors", "Captura", "El ESP32 mide temperatura, humedad y el estado de la puerta."),
+    (c2, "sync_alt", "Comunicación", "Los datos y las órdenes viajan en ambos sentidos por MQTT."),
+    (c3, "settings_remote", "Acción", "Enfriamiento, alarma sonora y mensajes en la pantalla LCD."),
+]
+for col, icono, titulo, texto in pasos:
+    with col:
+        html(f"""
+        <div class="card">
+          <div class="titulo"><span class="icono-circ" style="background:#F1F4FA;color:#14161F">{ic(icono)}</span>{titulo}</div>
+          <div class="etiqueta">{texto}</div>
+        </div>""")
 
-st.divider()
-estado = leer_estado()
-if estado.conectado:
-    st.success(f"🟢 Conectado al broker MQTT `{BROKER}`")
-else:
-    st.warning(f"🟡 Conectando al broker MQTT `{BROKER}`… recarga en unos segundos.")
+st.caption(f"Broker MQTT: {BROKER}")
