@@ -2,12 +2,17 @@
   NEVERA INTELIGENTE - Proyecto final Interfaces Multimodales
   ESP32 simulado en Wokwi
 
-  Sensores:   DHT22 (temperatura y humedad dentro de la nevera)
+  Sensores:   DHT22 (temperatura y humedad de la cocina, alrededor de la nevera)
               Interruptor deslizante (puerta abierta / cerrada)
   Actuadores: LED azul  -> compresor (enfriamiento)
               LED rojo  -> alarma
               Buzzer    -> alarma sonora
               LCD 16x2  -> mensajes que llegan desde Streamlit
+
+  Modelo termico (gemelo digital): la temperatura INTERIOR se calcula cada 2 s.
+    - Con el compresor encendido baja 0.3 °C.
+    - El calor de la cocina (DHT22) entra poco a poco; con la puerta abierta entra mucho mas rapido.
+    Asi se ve como la nevera enfria hasta el objetivo del termostato y como se calienta.
 
   Comunicacion bidireccional por MQTT:
     ESP32  -> Streamlit : publica los datos en TOPIC_DATOS cada 2 s (JSON)
@@ -65,7 +70,8 @@ String motivoAlarma = "";
 unsigned long puertaAbiertaDesde = 0;
 unsigned long ultimoEnvio = 0;
 unsigned long mensajeHasta = 0;      // hasta cuando se muestra un mensaje en el LCD
-float temp = 0, hum = 0;
+float temp = 4.0, hum = 0;          // temp = temperatura interior (modelo termico)
+float ambiente = 24.0;               // temperatura de la cocina medida por el DHT22
 bool puertaAbierta = false;
 
 void mostrarObjetivo() {
@@ -87,7 +93,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Orden recibida: ");
   Serial.println(msg);
 
-  if (msg == "OBJETIVO_MAS")        { objetivo = min(objetivo + 1.0f, 10.0f); modoAuto = true; mostrarObjetivo(); }
+  if (msg == "OBJETIVO_MAS")        { objetivo = min(objetivo + 1.0f, 8.0f); modoAuto = true; mostrarObjetivo(); }
   else if (msg == "OBJETIVO_MENOS") { objetivo = max(objetivo - 1.0f, -2.0f); modoAuto = true; mostrarObjetivo(); }
   else if (msg.startsWith("OBJETIVO:")) { objetivo = msg.substring(9).toFloat(); modoAuto = true; mostrarObjetivo(); }
   else if (msg == "COMPRESOR_ON")  { modoAuto = false; compresor = true; }
@@ -159,9 +165,15 @@ void setup() {
 void actualizarLogica() {
   // Lectura de sensores
   TempAndHumidity data = dhtSensor.getTempAndHumidity();
-  temp = data.temperature;
-  hum = data.humidity;
+  if (!isnan(data.temperature)) ambiente = data.temperature;
+  if (!isnan(data.humidity)) hum = data.humidity;
   puertaAbierta = digitalRead(PUERTA_PIN) == HIGH;
+
+  // Modelo termico de la nevera (cada 2 s)
+  if (compresor) temp -= 0.30;                          // el compresor saca calor
+  float fuga = puertaAbierta ? 0.035 : 0.006;           // fraccion del calor de la cocina que entra
+  temp += (ambiente - temp) * fuga;
+  temp = constrain(temp, -5.0, ambiente);
 
   // Tiempo con la puerta abierta
   if (puertaAbierta) {
@@ -170,13 +182,14 @@ void actualizarLogica() {
     puertaAbiertaDesde = 0;
   }
   bool puertaMucho = puertaAbierta && (millis() - puertaAbiertaDesde > PUERTA_MAX_MS);
-  bool muyCaliente = temp > umbral;
+  // La alarma salta por encima del limite (o 1.5 °C sobre el objetivo, si el objetivo es mayor)
+  bool muyCaliente = temp > max(umbral, objetivo + 1.5f);
 
   // Modo automatico (termostato con histeresis de 0.5 °C):
   // enfria si la temperatura esta por encima del objetivo y se apaga al alcanzarlo
   if (modoAuto) {
-    if (temp > objetivo + 0.5) compresor = true;
-    else if (temp < objetivo - 0.5) compresor = false;
+    if (temp > objetivo + 0.3) compresor = true;
+    else if (temp < objetivo - 0.3) compresor = false;
   }
 
   // Alarma
@@ -218,6 +231,7 @@ void publicarDatos() {
   StaticJsonDocument<256> doc;
   doc["temp"] = temp;
   doc["hum"] = hum;
+  doc["ambiente"] = ambiente;
   doc["puerta"] = puertaAbierta;
   doc["seg_abierta"] = puertaAbierta ? (millis() - puertaAbiertaDesde) / 1000 : 0;
   doc["compresor"] = compresor;

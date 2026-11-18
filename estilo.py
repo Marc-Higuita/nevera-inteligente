@@ -21,6 +21,8 @@ html, body, .stApp, .stMarkdown, button, input, textarea { font-family: 'Plus Ja
                      radial-gradient(900px 500px at 110% 10%, #EDE7FF 0%, transparent 55%), #F3F5FA; }
 .block-container { padding-top: 4.2rem; max-width: 1180px; }
 [data-testid="stToolbarActions"], footer { display: none !important; }
+[data-testid="stSidebar"] { min-width: 430px !important; max-width: 430px !important; background: #FFFFFF; }
+[data-testid="stSidebar"] iframe { border-radius: 18px; border: 1px solid #EAEDF4 !important; }
 h1, h2, h3, h4 { color: #14161F; letter-spacing: -0.02em; }
 
 .ic { font-family: 'Material Symbols Rounded'; font-weight: normal; font-style: normal;

@@ -61,7 +61,7 @@
     <div class="fila"><span>CONFIANZA</span><span id="conf">0%</span></div>
     <div class="lista" id="lista"></div>
     <button class="btn verde" id="registrar" disabled>Registrar en la nevera</button>
-    <button class="btn oscuro" id="sonido">Sonido: activado</button>
+    <div style="display:flex;gap:8px"><button class="btn oscuro" id="sonido" style="flex:1">Sonido: activado</button><button class="btn oscuro" id="probar" style="flex:1">Probar sonido</button></div>
     <button class="btn oscuro" id="detener" disabled>Detener</button>
     <div class="aviso" id="aviso"></div>
   </div>
@@ -140,6 +140,17 @@ $("iniciar").onclick = async () => {
   } catch (e) {
     $("estado").textContent = "No fue posible iniciar: " + e.message;
   }
+};
+$("probar").onclick = () => {
+  sonidoActivo = true; $("sonido").textContent = "Sonido: activado";
+  sonar([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.3]]);
+  setTimeout(() => {
+    const e = audioCtx ? audioCtx.state : "sin crear";
+    const txt = e === "running" ? "Audio activo. Si no escuchas, sube el volumen del computador."
+                                : "Chrome bloqueó el audio (" + e + "). Haz clic de nuevo en Probar sonido.";
+    const destino = document.getElementById("aviso") || document.getElementById("registro");
+    if (destino) destino.textContent = txt;
+  }, 400);
 };
 $("sonido").onclick = () => {
   sonidoActivo = !sonidoActivo;

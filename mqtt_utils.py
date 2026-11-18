@@ -31,6 +31,7 @@ POTENCIA_COMPRESOR_W = 120      # potencia típica de una nevera doméstica con 
 PERDIDA_PUERTA_WH_MIN = 2.0     # consumo extra estimado por cada minuto con la puerta abierta
 TARIFA_COP_KWH = 950            # tarifa residencial aproximada en pesos por kWh
 ZONA = ZoneInfo("America/Bogota")
+WOKWI_URL = "https://wokwi.com/projects/481057259362016257"   # simulación embebida en la app
 
 
 class EstadoNevera:
@@ -94,8 +95,8 @@ def obtener_cliente():
             estado.ultima_hora = ahora
             estado.historial.append({
                 "hora": datetime.now(ZONA).strftime("%H:%M:%S"),
-                "Temperatura (°C)": datos.get("temp"),
-                "Humedad (%)": datos.get("hum"),
+                "Temperatura interior (°C)": datos.get("temp"),
+                "Objetivo (°C)": datos.get("objetivo"),
             })
 
     client = mqtt.Client(

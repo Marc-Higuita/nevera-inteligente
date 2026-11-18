@@ -14,6 +14,15 @@ from mqtt_utils import (BROKER_WS, NTFY_TEMA, PERDIDA_PUERTA_WH_MIN, POTENCIA_CO
 barra_superior(leer_estado().conectado)
 encabezado("Monitoreo", "Estado de la nevera en tiempo real y control remoto del enfriamiento.", "thermostat")
 
+pasos = [("tune", "1. Fija el objetivo", "Con gestos, con los botones del termostato o por voz."),
+         ("memory", "2. El ESP32 decide", "Si la nevera está más caliente que el objetivo, enciende el compresor."),
+         ("trending_down", "3. La temperatura cambia", "Baja poco a poco al enfriar; sube si la puerta queda abierta.")]
+html('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:1rem">' + "".join(
+    f'<div class="card" style="padding:.9rem 1rem;display:flex;gap:.7rem;align-items:center">'
+    f'<span class="icono-circ" style="background:#E8EFFF;color:{AZUL};width:40px;height:40px">{ic(i, 20)}</span>'
+    f'<div><div style="font-weight:700;font-size:.92rem">{t}</div><div class="etiqueta">{x}</div></div></div>'
+    for i, t, x in pasos) + "</div>")
+
 
 def ordenar(orden: str, texto: str):
     if enviar_orden(orden):
@@ -55,13 +64,39 @@ def panel_en_vivo():
         silencio = " · Alarma silenciada" if d.get("silenciada") else ""
         html(f'<div class="alerta">{ic("warning")}<div>{d.get("motivo", "Alarma activa")}{silencio}</div></div>')
 
-    temp_color = ROJO if d["temp"] > d["umbral"] else AZUL
+    # Estado explicado en palabras
+    obj = d.get("objetivo", 4.0)
+    previo = est.historial[-2]["Temperatura interior (°C)"] if len(est.historial) > 1 else d["temp"]
+    tendencia = "bajando" if d["temp"] < previo - 0.01 else ("subiendo" if d["temp"] > previo + 0.01 else "estable")
+    if d["puerta"]:
+        icono, color, fondo = "door_open", "#B4232A", "#FFF1F1"
+        texto = f"Puerta abierta: está entrando calor de la cocina ({d['temp']:.1f} °C, {tendencia})"
+    elif d["compresor"]:
+        icono, color, fondo = "ac_unit", AZUL, AZUL_SUAVE
+        texto = f"Enfriando: {d['temp']:.1f} °C → objetivo {obj:.0f} °C"
+    elif d["temp"] < obj - 0.3:
+        icono, color, fondo = "pause_circle", "#11804F", "#E7F7EF"
+        texto = f"Por debajo del objetivo: el compresor descansa y la temperatura sube despacio ({d['temp']:.1f} °C)"
+    else:
+        icono, color, fondo = "check_circle", "#11804F", "#E7F7EF"
+        texto = f"Estable en el objetivo de {obj:.0f} °C"
+    flecha = {"bajando": "trending_down", "subiendo": "trending_up", "estable": "trending_flat"}[tendencia]
+    html(f"""
+    <div class="card" style="display:flex;align-items:center;gap:.9rem;padding:.9rem 1.2rem;margin-bottom:1rem;
+         background:{fondo};border-color:{fondo}">
+      <span class="icono-circ" style="background:white;color:{color};width:44px;height:44px">{ic(icono, 24)}</span>
+      <div style="flex:1;font-weight:700;color:{color}">{texto}</div>
+      <span class="pill">{ic(flecha, 18, color)} Temperatura {tendencia}</span>
+      <span class="pill">{ic('countertops', 18)} Cocina {d.get('ambiente', 0):.1f} °C</span>
+    </div>""")
+
+    temp_color = ROJO if d.get("alarma") else AZUL
     c1, c2, c3, c4 = st.columns([1.15, 1.15, 1, 1], gap="medium")
     etiqueta_temp = "Objetivo %.0f °C · máx. %.1f °C" % (d.get("objetivo", 4), d["umbral"])
     with c1:
-        html(f'<div class="card">{anillo(d["temp"], -5, 15, "°C", etiqueta_temp, temp_color)}</div>')
+        html(f'<div class="card">{anillo(d["temp"], -2, 12, "°C interior", etiqueta_temp, temp_color)}</div>')
     with c2:
-        html(f'<div class="card">{anillo(d["hum"], 0, 100, "%", "Humedad relativa", "#7C5CFF")}</div>')
+        html(f'<div class="card">{anillo(d["hum"], 0, 100, "%", "Humedad de la cocina", "#7C5CFF")}</div>')
     with c3:
         if d["puerta"]:
             chip = estado("Abierta", "#B4232A", "#FFF1F1")
@@ -116,7 +151,7 @@ def panel_en_vivo():
         with st.container(border=True):
             st.markdown("**:material/monitoring: Historial reciente**")
             df = pd.DataFrame(list(est.historial)).set_index("hora")
-            st.line_chart(df, color=[AZUL, "#7C5CFF"], height=240)
+            st.line_chart(df, color=[AZUL, "#E9A23B"], height=240)
 
 
 panel_en_vivo()
@@ -202,7 +237,7 @@ def html_gestos():
             .replace("__TOPIC_DATOS__", TOPIC_DATOS).replace("__BROKER_WS__", BROKER_WS))
 
 
-components.html(html_gestos(), height=560, scrolling=False)
+components.html(html_gestos(), height=620, scrolling=False)
 
 # ---------- Alertas al celular ----------
 st.write("")
