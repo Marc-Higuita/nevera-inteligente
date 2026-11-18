@@ -182,7 +182,6 @@ st.markdown("#### Control por gestos")
 st.caption("Sostén un gesto frente a la cámara durante un segundo para enviar la orden a la nevera.")
 
 
-@st.cache_data
 def html_gestos():
     ruta = Path(__file__).resolve().parent.parent / "componentes" / "gestos.html"
     return ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD).replace("__BROKER_WS__", BROKER_WS)

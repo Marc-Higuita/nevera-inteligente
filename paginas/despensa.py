@@ -375,7 +375,6 @@ tab_cam, tab_voz, tab_inv, tab_rec = st.tabs([":material/photo_camera: Cámara",
                                               ":material/menu_book: Recetas"])
 
 # ---------- Cámara ----------
-@st.cache_data
 def html_escaner():
     ruta = Path(__file__).resolve().parent.parent / "componentes" / "escaner.html"
     return (ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD)
