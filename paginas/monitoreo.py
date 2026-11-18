@@ -178,7 +178,7 @@ def html_gestos():
     return ruta.read_text(encoding="utf-8").replace("__TOPIC_CMD__", TOPIC_CMD).replace("__BROKER_WS__", BROKER_WS)
 
 
-components.html(html_gestos(), height=600, scrolling=False)
+components.html(html_gestos(), height=480, scrolling=False)
 
 # ---------- Alertas al celular ----------
 st.write("")
