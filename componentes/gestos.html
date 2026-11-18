@@ -183,6 +183,9 @@ $("detener").onclick = () => {
   $("detener").disabled = true;
 };
 
+let aviso = null;
+function mostrarAviso(texto) { aviso = { texto, hasta: performance.now() + 2800 }; }
+
 function hablar(texto) {
   if (!sonidoActivo || !window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(texto); u.lang = "es-CO"; u.rate = 1;
@@ -194,12 +197,24 @@ function enviar(clave) {
   const hora = new Date().toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" });
   sonar(g.sonido);
   if (!g.orden) {            // Índice arriba: la app lee el estado en voz alta
+    if (datos) mostrarAviso(`${datos.temp.toFixed(1)} °C · OBJ ${datos.objetivo ?? 4} °C`);
     hablar(datos ? `La nevera está a ${datos.temp.toFixed(1)} grados. La temperatura objetivo es ${datos.objetivo ?? 4} grados. ` +
       `El enfriamiento está ${datos.compresor ? "encendido" : "apagado"}` + (datos.alarma ? ". Hay una alarma activa." : ".")
       : "Todavía no hay datos de la nevera.");
     enviados.unshift(`${hora} · ${g.accion}`);
   } else if (cliente && cliente.connected) {
     cliente.publish(TOPIC_CMD, g.orden);
+    const t = datos ? datos.temp.toFixed(1) : "–";
+    let obj = datos && datos.objetivo != null ? datos.objetivo : 4;
+    if (g.orden === "OBJETIVO_MAS") obj = Math.min(obj + 1, 8);
+    if (g.orden === "OBJETIVO_MENOS") obj = Math.max(obj - 1, -2);
+    const frases = {
+      OBJETIVO_MAS: [`OBJETIVO ${obj} °C ▲`, `Subiste el objetivo a ${obj} grados. La nevera está a ${t} grados.`],
+      OBJETIVO_MENOS: [`OBJETIVO ${obj} °C ▼`, `Bajaste el objetivo a ${obj} grados. La nevera está a ${t} grados, empezará a enfriar.`],
+      SILENCIAR: ["ALARMA SILENCIADA", "Alarma silenciada."],
+      MODO_AUTO: ["MODO AUTOMÁTICO", `Modo automático. El objetivo es ${obj} grados.`],
+    }[g.orden];
+    if (frases) { mostrarAviso(frases[0]); hablar(frases[1]); }
     enviados.unshift(`${hora} · ${g.accion}`);
   } else {
     enviados.unshift(`${hora} · Sin conexión MQTT`);
@@ -224,6 +239,15 @@ function ciclo() {
 
     hud(W, H, k, mano ? 1 : 0);
     if (mano) dibujarMano(mano, W, H, k, clave, cat);
+    if (aviso && performance.now() < aviso.hasta) {
+      ctx.font = `800 ${54 * k}px 'Plus Jakarta Sans'`;
+      const tw = ctx.measureText(aviso.texto).width + 70 * k, th = 100 * k;
+      const ax = (W - tw) / 2, ay = H * 0.38;
+      ctx.fillStyle = "rgba(4,33,12,.88)"; ctx.fillRect(ax, ay, tw, th);
+      ctx.strokeStyle = VERDE; ctx.lineWidth = 3 * k; ctx.strokeRect(ax, ay, tw, th);
+      ctx.fillStyle = VERDE; ctx.textAlign = "center"; ctx.fillText(aviso.texto, W / 2, ay + th * 0.68);
+      ctx.textAlign = "left";
+    }
 
     // Gesto sostenido -> orden
     const ahora = performance.now();

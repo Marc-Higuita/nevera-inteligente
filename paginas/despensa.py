@@ -12,166 +12,14 @@ from PIL import Image
 from estilo import AMBAR, AZUL, GRIS, ROJO, VERDE, barra_superior, encabezado, estado, html, ic, lcd_virtual
 import streamlit.components.v1 as components
 
+from asistente import (DURACION_DIAS, ICONOS, agregar, datos_de_ejemplo, dias_restantes, interpretar, inventario,
+                       quitar, responder, resumen_inventario, sin_tildes, sugerir_recetas)
 from mqtt_utils import BROKER_WS, TOPIC_CMD, TOPIC_INV, ZONA, enviar_orden, leer_estado
 
 barra_superior(leer_estado().conectado)
 encabezado("Despensa", "Registra alimentos con la cámara o la voz y controla su vida útil.", "shopping_basket")
 
 CARPETA_MODELO = Path(__file__).resolve().parent.parent / "modelo"
-
-# Días aproximados que dura cada alimento en la nevera (ajústalos a tus clases)
-DURACION_DIAS = {
-    "leche": 5, "huevos": 21, "queso": 14, "yogur": 10, "jamon": 5,
-    "carne": 2, "pollo": 2, "fruta": 7, "manzana": 20, "banano": 5,
-    "verdura": 5, "tomate": 7, "lechuga": 5, "zanahoria": 21,
-    "naranja": 14, "limon": 21, "fresa": 4, "pina": 5, "pimenton": 7, "pepino": 7,
-    "brocoli": 5, "coliflor": 7, "repollo": 14, "champinon": 5, "calabacin": 7, "maiz": 4,
-    "agua": 60, "gaseosa": 30, "mantequilla": 30, "pescado": 2, "arepa": 5, "uvas": 7,
-    "mango": 5, "aguacate": 4, "cebolla": 30, "papa": 30, "jugo": 7, "salsa": 30, "pizza": 3, "helado": 60, "salchicha": 7, "pan": 4, "pasta": 3,
-}
-# Ícono (Material Symbols) para cada alimento
-ICONOS = {
-    "leche": "water_full", "yogur": "icecream", "queso": "lunch_dining", "huevos": "egg",
-    "jamon": "lunch_dining", "carne": "kebab_dining", "pollo": "set_meal", "fruta": "nutrition",
-    "manzana": "nutrition", "banano": "nutrition", "verdura": "eco", "tomate": "eco",
-    "lechuga": "eco", "zanahoria": "eco", "naranja": "nutrition", "limon": "nutrition",
-    "fresa": "nutrition", "pina": "nutrition", "granada": "nutrition", "pimenton": "eco",
-    "pepino": "eco", "brocoli": "eco", "coliflor": "eco", "repollo": "eco", "champinon": "eco",
-    "calabacin": "eco", "maiz": "eco", "ahuyama": "eco", "agua": "water_bottle",
-    "gaseosa": "local_drink", "vino": "wine_bar", "cerveza": "sports_bar", "pizza": "local_pizza",
-    "helado": "icecream", "salchicha": "kebab_dining", "hamburguesa": "lunch_dining",
-    "bebida": "local_drink", "taza": "coffee", "recipiente": "rice_bowl", "dona": "donut_large",
-    "torta": "cake", "sandwich": "lunch_dining", "copa": "wine_bar",
-    "pan": "bakery_dining", "mantequilla": "breakfast_dining", "pescado": "set_meal",
-    "arepa": "bakery_dining", "uvas": "nutrition", "mango": "nutrition", "aguacate": "nutrition",
-    "cebolla": "eco", "papa": "eco", "jugo": "local_drink", "salsa": "liquor", "pasta": "ramen_dining", "sopa": "soup_kitchen",
-}
-CLASES_VACIAS = {"nada", "vacio", "fondo", "ninguno"}
-
-
-def sin_tildes(texto: str) -> str:
-    texto = unicodedata.normalize("NFD", texto.lower())
-    return "".join(c for c in texto if unicodedata.category(c) != "Mn").strip()
-
-
-# ---------- Inventario compartido ----------
-@st.cache_resource
-def inventario():
-    """Lista compartida de alimentos: dicts {alimento, fecha con zona horaria}."""
-    return datos_de_ejemplo()
-
-
-# Alimentos precargados para la demostración: (nombre, hace cuántos días se guardó)
-EJEMPLO = [("Leche", 4), ("Huevos", 6), ("Manzana", 3), ("Queso", 2),
-           ("Pollo", 2), ("Tomate", 1), ("Yogur", 9), ("Zanahoria", 0)]
-
-
-def datos_de_ejemplo():
-    ahora = datetime.now(ZONA)
-    return [{"alimento": n, "fecha": ahora - timedelta(days=d, hours=1)} for n, d in EJEMPLO]
-
-
-def agregar(alimento: str, notificar: bool = True):
-    alimento = alimento.strip().capitalize()
-    inventario().append({"alimento": alimento, "fecha": datetime.now(ZONA)})
-    if notificar:
-        enviar_orden(f"MENSAJE:+ {alimento}")   # aparece en la LCD de la nevera
-    return f"{alimento} se agregó al inventario."
-
-
-def quitar(alimento: str):
-    buscado = sin_tildes(alimento)
-    for i, item in enumerate(inventario()):
-        if sin_tildes(item["alimento"]) == buscado:
-            inventario().pop(i)
-            enviar_orden(f"MENSAJE:- {item['alimento']}")
-            return f"{item['alimento']} se retiró del inventario."
-    return f"{alimento.capitalize()} no está en el inventario."
-
-
-def resumen_inventario():
-    items = inventario()
-    if not items:
-        return "El inventario está vacío."
-    nombres = ", ".join(i["alimento"] for i in items)
-    return f"En la nevera hay: {nombres}."
-
-
-# ---------- Intérprete de comandos (voz y texto usan el mismo) ----------
-def interpretar(frase: str) -> str:
-    f = sin_tildes(frase)
-    palabras = f.split()
-    if not palabras:
-        return "No se recibió ningún comando."
-
-    if "alarma" in f and any(p in f for p in ("silencia", "calla", "apaga")):
-        enviar_orden("SILENCIAR")
-        return "Alarma silenciada."
-    if "temperatura" in f and any(p in f for p in ("sube", "subir", "aumenta", "mas alta")):
-        enviar_orden("OBJETIVO_MAS")
-        return "Subí un grado la temperatura objetivo."
-    if "temperatura" in f and any(p in f for p in ("baja", "bajar", "disminuye", "mas fria", "enfria")):
-        enviar_orden("OBJETIVO_MENOS")
-        return "Bajé un grado la temperatura objetivo."
-    if any(p in f for p in ("enfriamiento", "compresor", "frio")):
-        if any(p in f for p in ("apaga", "deten", "para ")):
-            enviar_orden("COMPRESOR_OFF")
-            return "Enfriamiento apagado."
-        if "automatico" in f:
-            enviar_orden("MODO_AUTO")
-            return "Enfriamiento en modo automático."
-        if any(p in f for p in ("enciende", "prende", "activa", "mas")):
-            enviar_orden("COMPRESOR_ON")
-            return "Enfriamiento encendido."
-    if "temperatura" in f:
-        d = leer_estado().ultimo
-        if d:
-            return f"Temperatura actual: {d['temp']:.1f} grados. Puerta {'abierta' if d['puerta'] else 'cerrada'}."
-        return "Aún no hay datos de la nevera."
-    if any(p in f for p in ("que hay", "inventario", "lista")):
-        return resumen_inventario()
-    if any(p in f for p in ("receta", "cocino", "cocinar", "preparo")):
-        sug = sugerir_recetas(inventario(), n=1)
-        if not sug:
-            return "No tengo recetas para los alimentos registrados."
-        _, receta, _, urgentes, _ = sug[0]
-        extra = ""
-        if urgentes:
-            verbo = "vence" if len(urgentes) == 1 else "vencen"
-            extra = f" Así aprovechas {' y '.join(urgentes)}, que {verbo} pronto."
-        return f"Te sugiero {receta['nombre']}.{extra} " + " ".join(receta["pasos"])
-
-    verbos_agregar = ("agrega", "agregar", "anade", "anadir", "guarda", "guardar", "mete", "compre")
-    verbos_quitar = ("saca", "sacar", "quita", "quitar", "elimina", "borra", "comi", "se acabo")
-    for v in verbos_quitar:
-        if f.startswith(v) or f" {v} " in f" {f} ":
-            resto = f.split(v, 1)[1].replace("el ", "").replace("la ", "").replace("los ", "").replace("las ", "").strip()
-            return quitar(resto) if resto else "Indica qué alimento deseas retirar."
-    for v in verbos_agregar:
-        if f.startswith(v) or f" {v} " in f" {f} ":
-            resto = f.split(v, 1)[1].strip()
-            for articulo in ("un ", "una ", "unos ", "unas ", "el ", "la ", "los ", "las "):
-                if resto.startswith(articulo):
-                    resto = resto[len(articulo):]
-            return agregar(resto) if resto else "Indica qué alimento deseas agregar."
-
-    return ("No reconocí el comando. Prueba con: agrega leche, saca los huevos, "
-            "qué hay en la nevera, enciende el enfriamiento o silencia la alarma.")
-
-
-def responder(texto: str):
-    """Muestra la respuesta y la lee en voz alta (salida multimodal)."""
-    html(f'<div class="card" style="display:flex;gap:.8rem;align-items:center;padding:1rem 1.2rem">'
-         f'<span class="icono-circ" style="background:#E8EFFF;color:{AZUL}">{ic("graphic_eq")}</span>'
-         f'<div style="font-weight:600">{texto}</div></div>')
-    try:
-        from gtts import gTTS
-        audio = io.BytesIO()
-        gTTS(texto, lang="es", tld="com.mx").write_to_fp(audio)
-        st.audio(audio.getvalue(), format="audio/mp3", autoplay=True)
-    except Exception:
-        pass   # si no hay internet para la voz, al menos queda el texto
-
 
 # ---------- Reconocimiento de alimentos ----------
 # Se usa CLIP (OpenAI), un modelo que compara la imagen con descripciones en texto.
@@ -259,80 +107,6 @@ def imagen_desde_enlace(url: str) -> Image.Image:
     pedido = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (NeveraInteligente; proyecto academico EAFIT)", "Accept": "image/*"})
     with urllib.request.urlopen(pedido, timeout=15) as r:
         return Image.open(io.BytesIO(r.read()))
-
-
-# ---------- Recetas anti-desperdicio ----------
-RECETAS = [
-    {"nombre": "Arepa con huevo", "min": 20, "icono": "egg_alt", "ingredientes": ["Arepa", "Huevos"],
-     "pasos": ["Asa las arepas hasta que estén doradas.", "Fríe o revuelve los huevos con sal.",
-               "Abre la arepa y rellénala con el huevo."]},
-    {"nombre": "Huevos pericos", "min": 15, "icono": "skillet", "ingredientes": ["Huevos", "Tomate", "Cebolla"],
-     "pasos": ["Sofríe el tomate y la cebolla picados.", "Agrega los huevos batidos con sal.",
-               "Revuelve a fuego medio hasta que cuajen."]},
-    {"nombre": "Batido de banano", "min": 5, "icono": "blender", "ingredientes": ["Banano", "Leche"],
-     "pasos": ["Pela y trocea el banano.", "Licúa con la leche fría.", "Sirve de inmediato."]},
-    {"nombre": "Arroz con leche", "min": 40, "icono": "rice_bowl", "ingredientes": ["Leche"],
-     "pasos": ["Cocina el arroz en agua hasta que ablande.", "Agrega la leche, azúcar y canela.",
-               "Cocina a fuego bajo hasta que espese."]},
-    {"nombre": "Salpicón de frutas", "min": 10, "icono": "nutrition",
-     "ingredientes": ["Manzana", "Banano", "Fresa", "Naranja", "Mango"],
-     "pasos": ["Pica todas las frutas en cubos.", "Mézclalas en un recipiente.",
-               "Agrega jugo de naranja y sirve frío."]},
-    {"nombre": "Ensalada fresca", "min": 10, "icono": "eco",
-     "ingredientes": ["Lechuga", "Tomate", "Pepino", "Zanahoria"],
-     "pasos": ["Lava y pica las verduras.", "Mezcla en un recipiente.", "Aliña con limón, sal y aceite."]},
-    {"nombre": "Sándwich de jamón y queso", "min": 10, "icono": "lunch_dining",
-     "ingredientes": ["Pan", "Jamón", "Queso"],
-     "pasos": ["Arma el sándwich con jamón y queso.", "Caliéntalo en sartén o sanduchera.",
-               "Sirve cuando el queso esté derretido."]},
-    {"nombre": "Pollo guisado", "min": 45, "icono": "set_meal", "ingredientes": ["Pollo", "Tomate", "Cebolla", "Papa"],
-     "pasos": ["Dora las presas de pollo.", "Agrega el hogao de tomate y cebolla.",
-               "Incorpora las papas y cocina tapado 30 minutos."]},
-    {"nombre": "Sopa de verduras", "min": 35, "icono": "soup_kitchen",
-     "ingredientes": ["Zanahoria", "Papa", "Brócoli", "Cebolla"],
-     "pasos": ["Pica todas las verduras.", "Cocínalas en agua con sal y cebolla.",
-               "Sirve caliente con cilantro."]},
-    {"nombre": "Tortilla de verduras", "min": 20, "icono": "skillet",
-     "ingredientes": ["Huevos", "Pimentón", "Cebolla", "Tomate"],
-     "pasos": ["Sofríe las verduras picadas.", "Vierte los huevos batidos encima.",
-               "Cocina tapado hasta que cuaje y dóblala."]},
-    {"nombre": "Yogur con frutas", "min": 5, "icono": "icecream", "ingredientes": ["Yogur", "Fresa", "Banano", "Manzana"],
-     "pasos": ["Pica la fruta.", "Sirve el yogur en un vaso.", "Agrega la fruta y granola si tienes."]},
-    {"nombre": "Guacamole", "min": 10, "icono": "nutrition", "ingredientes": ["Aguacate", "Tomate", "Cebolla", "Limón"],
-     "pasos": ["Machaca el aguacate.", "Agrega tomate y cebolla picados.", "Sazona con limón y sal."]},
-    {"nombre": "Bistec a caballo", "min": 30, "icono": "kebab_dining", "ingredientes": ["Carne", "Tomate", "Cebolla", "Huevos"],
-     "pasos": ["Asa la carne con sal y pimienta.", "Prepara un hogao de tomate y cebolla.",
-               "Sirve con el hogao y un huevo frito encima."]},
-    {"nombre": "Pasta con salsa y queso", "min": 20, "icono": "ramen_dining", "ingredientes": ["Pasta", "Salsa", "Queso"],
-     "pasos": ["Cocina la pasta en agua con sal.", "Calienta la salsa.", "Mezcla y gratina con queso."]},
-    {"nombre": "Limonada natural", "min": 5, "icono": "local_drink", "ingredientes": ["Limón"],
-     "pasos": ["Exprime los limones.", "Licúa con agua, hielo y azúcar.", "Cuela y sirve."]},
-]
-
-
-def dias_restantes(item, dias_extra=0):
-    ahora = datetime.now(ZONA) + timedelta(days=dias_extra)
-    dias = (ahora - item["fecha"]).days
-    return DURACION_DIAS.get(sin_tildes(item["alimento"]), 7) - dias
-
-
-def sugerir_recetas(items, n=6):
-    """Ordena las recetas: primero las que usan alimentos por vencer."""
-    disponibles = {}
-    for item in items:
-        clave = sin_tildes(item["alimento"])
-        r = dias_restantes(item)
-        disponibles[clave] = min(r, disponibles.get(clave, r))
-    resultado = []
-    for receta in RECETAS:
-        tiene = [i for i in receta["ingredientes"] if sin_tildes(i) in disponibles]
-        if not tiene:
-            continue
-        urgentes = [i for i in tiene if disponibles[sin_tildes(i)] <= 2]
-        puntaje = (len(tiene) / len(receta["ingredientes"])) + 1.5 * len(urgentes)
-        resultado.append((puntaje, receta, tiene, urgentes, disponibles))
-    resultado.sort(key=lambda x: -x[0])
-    return resultado[:n]
 
 
 def panel_recetas():
@@ -505,7 +279,7 @@ with tab_voz:
     with der:
         comandos = [
             ("add_circle", "Agrega leche"), ("remove_circle", "Saca los huevos"),
-            ("list_alt", "Qué hay en la nevera"), ("menu_book", "Qué puedo cocinar"),
+            ("list_alt", "Qué hay en la nevera"), ("event", "Cuándo vence la leche"), ("menu_book", "Qué puedo cocinar"),
             ("device_thermostat", "Cuál es la temperatura"), ("thermostat", "Baja la temperatura"),
             ("ac_unit", "Enciende el enfriamiento"), ("notifications_off", "Silencia la alarma"),
         ]

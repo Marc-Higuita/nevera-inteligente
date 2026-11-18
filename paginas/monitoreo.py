@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from asistente import interpretar, responder, transcribir
 from estilo import (AMBAR, AZUL, AZUL_SUAVE, GRIS, ROJO, VERDE, anillo, barra_superior, encabezado, estado,
                     html, ic, lcd_virtual, sonido)
 from mqtt_utils import (BROKER_WS, NTFY_TEMA, PERDIDA_PUERTA_WH_MIN, POTENCIA_COMPRESOR_W, TARIFA_COP_KWH,
@@ -63,6 +64,10 @@ def panel_en_vivo():
         silencio = " · Alarma silenciada" if d.get("silenciada") else ""
         html(f'<div class="alerta">{ic("warning")}<div>{d.get("motivo", "Alarma activa")}{silencio}</div></div>')
 
+    if "lcd1" not in d:
+        st.info("La simulación de Wokwi está usando una versión anterior del código. Recarga la página (F5) "
+                "y vuelve a pulsar ▶ para activar la pantalla y la puerta desde la app.", icon=":material/update:")
+
     # Estado explicado en palabras
     obj = d.get("objetivo", 4.0)
     previo = est.historial[-2]["Temperatura interior (°C)"] if len(est.historial) > 1 else d["temp"]
@@ -89,62 +94,89 @@ def panel_en_vivo():
       <span class="pill">{ic('countertops', 18)} Cocina {d.get('ambiente', 0):.1f} °C · {d.get('hum', 0):.0f} %</span>
     </div>""")
 
-    c1, c2, c3, c4 = st.columns([1.05, 1.5, .95, .95], gap="medium")
-    with c1:
-        etiqueta = "Objetivo %.0f °C · máx. %.1f °C" % (obj, d["umbral"])
-        html(f'<div class="card">{anillo(d["temp"], -2, 12, "°C interior", etiqueta, ROJO if d.get("alarma") else AZUL)}</div>')
-    with c2:
-        html(f"""
-        <div class="card">
-          <div class="titulo">{ic('developer_board', 20)}Pantalla de la nevera</div>
-          {lcd_virtual(d.get('lcd1', ''), d.get('lcd2', ''))}
-          <div class="etiqueta" style="margin-top:.6rem">Réplica en vivo de la LCD 16x2 del ESP32.</div>
-        </div>""")
-    with c3:
-        if d["puerta"]:
-            chip, detalle = estado("Abierta", "#B4232A", "#FFF1F1"), f'{d["seg_abierta"]} s'
-            icono, color, fondo = "door_open", ROJO, "#FFF1F1"
-        else:
-            chip, detalle = estado("Cerrada", "#11804F", "#E7F7EF"), "Sellada"
-            icono, color, fondo = "door_front", VERDE, "#E7F7EF"
-        html(f"""
-        <div class="card">
-          <span class="icono-circ" style="background:{fondo};color:{color};width:50px;height:50px">{ic(icono, 26)}</span>
-          <div class="etiqueta" style="margin-top:.9rem">Puerta</div>
-          <div class="valor">{detalle}</div>
-          <div style="margin-top:.5rem">{chip}</div>
-        </div>""")
-    with c4:
-        if d["compresor"]:
-            chip, icono_color, fondo = estado("Encendido", AZUL, AZUL_SUAVE), AZUL, AZUL_SUAVE
-        else:
-            chip, icono_color, fondo = estado("Apagado", GRIS, "#F1F4FA"), GRIS, "#F1F4FA"
-        modo_txt = "Automático" if d["modo_auto"] else "Manual"
-        html(f"""
-        <div class="card">
-          <span class="icono-circ" style="background:{fondo};color:{icono_color};width:50px;height:50px">{ic('ac_unit', 26)}</span>
-          <div class="etiqueta" style="margin-top:.9rem">Compresor</div>
-          <div class="valor">{modo_txt}</div>
-          <div style="margin-top:.5rem">{chip}</div>
-        </div>""")
-
-
 panel_en_vivo()
 
+
+def lcd_desde_datos(d):
+    """Líneas de la LCD; si el ESP32 tiene una versión anterior del código, se calculan aquí."""
+    if not d:
+        return "Sin conexion", "Pulsa > en Wokwi", True
+    if "lcd1" in d:
+        return d.get("lcd1", ""), d.get("lcd2", ""), False
+    l1 = f"T:{d['temp']:.1f}C Obj:{d.get('objetivo', 4):.0f}C"
+    l2 = ("ALARMA!" if d.get("alarma") else "Puerta ABIERTA" if d["puerta"]
+          else "Enfriando..." if d["compresor"] else "Puerta cerrada")
+    return l1, l2, False
+
+
 # =====================================================================
-# 2. CONTROLES
+# 1. FILA PRINCIPAL: temperatura · pantalla + asistente · puerta y compresor
 # =====================================================================
-st.write("")
-t1, t2 = st.columns([3, 1], vertical_alignment="bottom")
-t1.markdown("#### Controles")
-with t2.popover("Cómo funciona", icon=":material/help:", use_container_width=True):
-    st.markdown(
-        "1. **Fija el objetivo** con el termostato, con gestos o por voz.\n"
-        "2. **El ESP32 decide:** si la nevera está más caliente que el objetivo, enciende el compresor.\n"
-        "3. **La temperatura cambia** poco a poco: baja al enfriar y sube si la puerta queda abierta.\n\n"
-        "El sensor DHT22 de Wokwi mide la cocina; la temperatura interior la calcula el ESP32 con un "
-        "modelo térmico."
-    )
+@st.fragment(run_every=2)
+def tarjeta_temperatura():
+    d = datos()
+    if not d:
+        return
+    etiqueta = "Objetivo %.0f °C · máx. %.1f °C" % (d.get("objetivo", 4), d["umbral"])
+    html(f'<div class="card">{anillo(d["temp"], -2, 12, "°C interior", etiqueta, ROJO if d.get("alarma") else AZUL)}</div>')
+
+
+@st.fragment(run_every=2)
+def pantalla():
+    l1, l2, apagada = lcd_desde_datos(datos())
+    html(lcd_virtual(l1, l2, apagada=apagada))
+
+
+@st.fragment(run_every=2)
+def estado_puerta_compresor():
+    d = datos()
+    if not d:
+        return
+    if d["puerta"]:
+        p_icono, p_color, p_fondo, p_txt = "door_open", ROJO, "#FFF1F1", f'Abierta · {d["seg_abierta"]} s'
+    else:
+        p_icono, p_color, p_fondo, p_txt = "door_front", VERDE, "#E7F7EF", "Cerrada"
+    if d["compresor"]:
+        c_color, c_fondo, c_txt = AZUL, AZUL_SUAVE, "Enfriando"
+    else:
+        c_color, c_fondo, c_txt = GRIS, "#F1F4FA", "En reposo"
+    modo_txt = "automático" if d["modo_auto"] else "manual"
+    filas = [(p_icono, p_color, p_fondo, "Puerta", p_txt), ("ac_unit", c_color, c_fondo, f"Compresor · {modo_txt}", c_txt)]
+    html("".join(f"""
+    <div class="card" style="display:flex;gap:.8rem;align-items:center;padding:1rem 1.1rem;margin-bottom:12px">
+      <span class="icono-circ" style="background:{f};color:{c};width:48px;height:48px">{ic(i, 24)}</span>
+      <div><div class="etiqueta">{e}</div><div class="valor" style="font-size:1.2rem;color:{c}">{t}</div></div>
+    </div>""" for i, c, f, e, t in filas))
+
+
+f1, f2, f3 = st.columns([1, 1.75, 1], gap="medium")
+with f1:
+    tarjeta_temperatura()
+with f2:
+    with st.container(border=True):
+        st.markdown("**:material/developer_board: Pantalla de la nevera y asistente**")
+        pantalla()
+        with st.form("asistente", clear_on_submit=True, border=False):
+            a, b = st.columns([3, 1], vertical_alignment="bottom")
+            pregunta = a.text_input("Pregunta, orden o mensaje para la pantalla",
+                                    placeholder="Ej: cuándo vence la leche · baja la temperatura · mensaje: hola")
+            enviado = b.form_submit_button("Enviar", icon=":material/send:", type="primary", use_container_width=True)
+        audio = st.audio_input("O dilo en voz alta", key="voz_monitoreo")
+        frase = transcribir(audio, "audio_monitoreo")
+        if enviado and pregunta:
+            frase = pregunta
+        if frase:
+            st.caption(f"“{frase}”")
+            responder(interpretar(frase))
+with f3:
+    estado_puerta_compresor()
+
+# =====================================================================
+# 2. PESTAÑAS: controles · gestos · energía · alertas
+# =====================================================================
+tab_ctrl, tab_gestos, tab_energia, tab_alertas = st.tabs([
+    ":material/tune: Controles", ":material/front_hand: Gestos",
+    ":material/monitoring: Energía e historial", ":material/notifications: Alertas al celular"])
 
 
 @st.fragment(run_every=2)
@@ -166,22 +198,20 @@ def tarjeta_puerta():
     d = datos()
     st.markdown("**:material/door_front: Puerta**")
     abierta = d.get("puerta", False)
-    if abierta:
-        st.markdown(f"<div class='valor' style='color:{ROJO};text-align:center;margin:.35rem 0'>Abierta</div>"
-                    f"<div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>"
-                    f"{d.get('seg_abierta', 0)} s · entra calor</div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='valor' style='color:#11804F;text-align:center;margin:.35rem 0'>Cerrada</div>"
-                    f"<div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>Sellado correcto</div>",
-                    unsafe_allow_html=True)
-    if d.get("puerta_remota") or not abierta:
-        if abierta:
-            if st.button("Cerrar puerta", icon=":material/door_front:", type="primary", use_container_width=True):
-                ordenar("PUERTA_CERRAR", "Puerta cerrada")
-        elif st.button("Abrir puerta", icon=":material/door_open:", use_container_width=True):
-            ordenar("PUERTA_ABRIR", "Puerta abierta (simulación)")
-    else:
+    color, titulo, sub = (ROJO, "Abierta", f"{d.get('seg_abierta', 0)} s · entra calor") if abierta \
+        else ("#11804F", "Cerrada", "Sellado correcto")
+    st.markdown(f"<div class='valor' style='color:{color};text-align:center;margin:.35rem 0'>{titulo}</div>"
+                f"<div class='etiqueta' style='text-align:center;margin-bottom:.6rem'>{sub}</div>",
+                unsafe_allow_html=True)
+    if d and "puerta_remota" not in d:
+        st.caption("Recarga la página y pulsa ▶ en Wokwi para usar este botón.")
+    elif abierta and not d.get("puerta_remota"):
         st.caption("Se abrió con el interruptor de Wokwi: ciérrala desde allí.")
+    elif abierta:
+        if st.button("Cerrar puerta", icon=":material/door_front:", type="primary", use_container_width=True):
+            ordenar("PUERTA_CERRAR", "Puerta cerrada")
+    elif st.button("Abrir puerta", icon=":material/door_open:", use_container_width=True):
+        ordenar("PUERTA_ABRIR", "Puerta abierta (simulación)")
 
 
 def cambiar_modo():
@@ -194,58 +224,48 @@ def cambiar_modo():
 if "umbral" not in st.session_state:
     st.session_state["umbral"] = float(datos().get("umbral", 5.0))
 
-col0, col1, col2, col3 = st.columns(4, gap="small")
-with col0:
-    with st.container(border=True):
-        tarjeta_termostato()
-with col1:
-    with st.container(border=True):
-        st.markdown("**:material/ac_unit: Compresor**")
-        modo = st.segmented_control("Modo", ["Automático", "Manual"], default="Automático", key="modo",
-                                    on_change=cambiar_modo, label_visibility="collapsed")
-        if modo == "Manual":
-            if st.button("Encender", icon=":material/power_settings_new:", type="primary", use_container_width=True):
-                ordenar("COMPRESOR_ON", "Compresor encendido")
-            if st.button("Apagar", icon=":material/power_off:", use_container_width=True):
-                ordenar("COMPRESOR_OFF", "Compresor apagado")
-        else:
-            st.caption("En automático el ESP32 enfría hasta llegar al objetivo del termostato.")
-with col2:
-    with st.container(border=True):
-        tarjeta_puerta()
-with col3:
-    with st.container(border=True):
-        st.markdown("**:material/notifications: Alarma**")
-        umbral = st.slider("Temperatura máxima", 1.0, 10.0, step=0.5, format="%.1f °C", key="umbral")
-        if st.button("Guardar límite", icon=":material/save:", use_container_width=True):
-            ordenar(f"UMBRAL:{umbral}", f"Límite: {umbral:.1f} °C")
-        if st.button("Silenciar", icon=":material/notifications_off:", type="primary", use_container_width=True):
-            ordenar("SILENCIAR", "Alarma silenciada")
-
-# Mensaje para la pantalla, con vista previa
-with st.container(border=True):
-    st.markdown("**:material/chat: Mensaje en la pantalla de la nevera**")
-    m1, m2 = st.columns([1.4, 1], gap="large", vertical_alignment="center")
-    with m1:
-        texto = st.text_input("Texto (máximo 32 caracteres)", max_chars=32,
-                              placeholder="Ejemplo: Revisar fecha de la leche", key="texto_lcd")
-        e1, e2 = st.columns(2)
-        if e1.button("Enviar a la nevera", icon=":material/send:", type="primary", use_container_width=True,
-                     disabled=not texto):
-            ordenar(f"MENSAJE:{texto}", "Mensaje enviado a la pantalla")
-        if e2.button("Probar alarma sonora", icon=":material/volume_up:", use_container_width=True):
-            ordenar("PROBAR_ALARMA", "Prueba de alarma enviada")
-    with m2:
-        vista = texto or "Escribe un texto"
-        html(f'<div class="etiqueta" style="margin-bottom:.4rem">Vista previa</div>'
-             f'{lcd_virtual(vista[:16], vista[16:32], apagada=not texto)}')
-
-# =====================================================================
-# 3. CONTROL POR GESTOS
-# =====================================================================
-st.write("")
-st.markdown("#### Control por gestos")
-st.caption("Usa la mano como termostato: pulgar arriba o abajo cambia el objetivo. Sostén cada gesto un segundo.")
+with tab_ctrl:
+    col0, col1, col2, col3 = st.columns(4, gap="small")
+    with col0:
+        with st.container(border=True):
+            tarjeta_termostato()
+    with col1:
+        with st.container(border=True):
+            st.markdown("**:material/ac_unit: Compresor**")
+            modo = st.segmented_control("Modo", ["Automático", "Manual"], default="Automático", key="modo",
+                                        on_change=cambiar_modo, label_visibility="collapsed")
+            if modo == "Manual":
+                if st.button("Encender", icon=":material/power_settings_new:", type="primary",
+                             use_container_width=True):
+                    ordenar("COMPRESOR_ON", "Compresor encendido")
+                if st.button("Apagar", icon=":material/power_off:", use_container_width=True):
+                    ordenar("COMPRESOR_OFF", "Compresor apagado")
+            else:
+                st.caption("En automático el ESP32 enfría hasta llegar al objetivo del termostato.")
+    with col2:
+        with st.container(border=True):
+            tarjeta_puerta()
+    with col3:
+        with st.container(border=True):
+            st.markdown("**:material/notifications: Alarma**")
+            umbral = st.slider("Temperatura máxima", 1.0, 10.0, step=0.5, format="%.1f °C", key="umbral")
+            if st.button("Guardar límite", icon=":material/save:", use_container_width=True):
+                ordenar(f"UMBRAL:{umbral}", f"Límite: {umbral:.1f} °C")
+            s1, s2 = st.columns(2)
+            if s1.button("", icon=":material/notifications_off:", type="primary", use_container_width=True,
+                         help="Silenciar alarma", key="silenciar"):
+                ordenar("SILENCIAR", "Alarma silenciada")
+            if s2.button("", icon=":material/volume_up:", use_container_width=True, help="Probar alarma sonora",
+                         key="probar_alarma"):
+                ordenar("PROBAR_ALARMA", "Prueba de alarma enviada")
+    with st.popover("Cómo funciona", icon=":material/help:"):
+        st.markdown(
+            "1. **Fija el objetivo** con el termostato, con gestos o por voz.\n"
+            "2. **El ESP32 decide:** si la nevera está más caliente que el objetivo, enciende el compresor.\n"
+            "3. **La temperatura cambia** poco a poco: baja al enfriar y sube si la puerta queda abierta.\n\n"
+            "El sensor DHT22 de Wokwi mide la cocina; la temperatura interior la calcula el ESP32 con un "
+            "modelo térmico."
+        )
 
 
 def html_gestos():
@@ -254,12 +274,10 @@ def html_gestos():
             .replace("__TOPIC_DATOS__", TOPIC_DATOS).replace("__BROKER_WS__", BROKER_WS))
 
 
-components.html(html_gestos(), height=620, scrolling=False)
-
-# =====================================================================
-# 4. ENERGÍA E HISTORIAL
-# =====================================================================
-st.markdown("#### Energía e historial")
+with tab_gestos:
+    st.caption("Usa la mano como termostato: pulgar arriba o abajo cambia el objetivo. Sostén cada gesto un segundo; "
+               "la app te dice el nuevo valor en voz alta y lo verás en la pantalla de la nevera.")
+    components.html(html_gestos(), height=620, scrolling=False)
 
 
 @st.fragment(run_every=4)
@@ -289,21 +307,17 @@ def panel_historial():
             st.caption("La gráfica aparece cuando llegan los primeros datos.")
 
 
-panel_historial()
-with st.popover("Cómo se calcula la energía", icon=":material/info:"):
-    st.markdown(
-        f"- Compresor: **{POTENCIA_COMPRESOR_W} W** mientras está encendido.\n"
-        f"- Puerta abierta: **{PERDIDA_PUERTA_WH_MIN} Wh** extra por cada minuto, por la entrada de aire caliente.\n"
-        f"- Tarifa: **${TARIFA_COP_KWH} COP por kWh** (valor residencial aproximado).\n\n"
-        "Son estimaciones para mostrar el impacto de dejar la puerta abierta; los contadores se reinician cada día."
-    )
+with tab_energia:
+    panel_historial()
+    with st.popover("Cómo se calcula la energía", icon=":material/info:"):
+        st.markdown(
+            f"- Compresor: **{POTENCIA_COMPRESOR_W} W** mientras está encendido.\n"
+            f"- Puerta abierta: **{PERDIDA_PUERTA_WH_MIN} Wh** extra por cada minuto, por la entrada de aire caliente.\n"
+            f"- Tarifa: **${TARIFA_COP_KWH} COP por kWh** (valor residencial aproximado).\n\n"
+            "Son estimaciones para mostrar el impacto de dejar la puerta abierta; los contadores se reinician cada día."
+        )
 
-# =====================================================================
-# 5. ALERTAS AL CELULAR
-# =====================================================================
-st.write("")
-st.markdown("#### Alertas al celular")
-with st.container(border=True):
+with tab_alertas:
     a1, a2 = st.columns([1, 1.6], gap="large", vertical_alignment="center")
     url_tema = f"https://ntfy.sh/{NTFY_TEMA}"
     with a1:
@@ -320,7 +334,7 @@ with st.container(border=True):
             enviar_alerta("Nevera Inteligente", "Notificación de prueba: las alertas están configuradas.",
                           leer_estado(), prioridad="default")
             st.toast("Notificación enviada", icon=":material/check_circle:")
-    alertas = list(leer_estado().alertas)
-    if alertas:
-        st.caption("Últimas notificaciones: " + " · ".join(
-            f"{a['hora']} {'enviada' if a['ok'] else 'falló'}" for a in alertas[:4]))
+        alertas = list(leer_estado().alertas)
+        if alertas:
+            st.caption("Últimas notificaciones: " + " · ".join(
+                f"{a['hora']} {'enviada' if a['ok'] else 'falló'}" for a in alertas[:4]))
