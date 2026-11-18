@@ -42,7 +42,17 @@ def sin_tildes(texto: str) -> str:
 @st.cache_resource
 def inventario():
     """Lista compartida de alimentos: dicts {alimento, fecha con zona horaria}."""
-    return []
+    return datos_de_ejemplo()
+
+
+# Alimentos precargados para la demostración: (nombre, hace cuántos días se guardó)
+EJEMPLO = [("Leche", 4), ("Huevos", 6), ("Manzana", 3), ("Queso", 2),
+           ("Pollo", 2), ("Tomate", 1), ("Yogur", 9), ("Zanahoria", 0)]
+
+
+def datos_de_ejemplo():
+    ahora = datetime.now(ZONA)
+    return [{"alimento": n, "fecha": ahora - timedelta(days=d, hours=1)} for n, d in EJEMPLO]
 
 
 def agregar(alimento: str):
@@ -274,6 +284,10 @@ with tab_inv:
           <div class="valor" style="font-size:1.15rem;margin-top:.6rem">Sin productos registrados</div>
           <div class="etiqueta">Agrega alimentos desde la cámara o con un comando de voz.</div>
         </div>""")
+        st.write("")
+        if st.button("Cargar inventario de ejemplo", icon=":material/restart_alt:"):
+            items[:] = datos_de_ejemplo()
+            st.rerun()
     else:
         ahora = datetime.now(ZONA) + timedelta(days=dias_extra)
         tiles, urgentes = [], []
@@ -299,6 +313,10 @@ with tab_inv:
             st.write("")
             st.warning("Consumir pronto: " + ", ".join(urgentes), icon=":material/schedule:")
         st.write("")
-        if st.button("Vaciar inventario", icon=":material/delete:"):
+        v1, v2, _ = st.columns([1, 1, 2])
+        if v1.button("Vaciar inventario", icon=":material/delete:", use_container_width=True):
             items.clear()
+            st.rerun()
+        if v2.button("Restablecer ejemplo", icon=":material/restart_alt:", use_container_width=True):
+            items[:] = datos_de_ejemplo()
             st.rerun()
