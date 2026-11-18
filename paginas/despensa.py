@@ -216,8 +216,7 @@ def cargar_modelo():
             emb = emb / emb.norm(dim=-1, keepdim=True)
         return modelo, procesador, emb, clases
     except Exception as e:
-        st.session_state["error_modelo"] = f"{type(e).__name__}: {e}"
-        return None
+        return f"{type(e).__name__}: {e}"   # texto del error, para mostrarlo en pantalla
 
 
 def reconocer(imagen: Image.Image):
@@ -288,12 +287,13 @@ with tab_cam:
             </div>""")
         else:
             with st.spinner("Analizando imagen…"):
-                cargado = cargar_modelo() is not None
+                recurso = cargar_modelo()
+                cargado = not isinstance(recurso, str)
                 clase, confianza = reconocer(imagen) if cargado else (None, 0.0)
             if not cargado:
                 st.info("El modelo de reconocimiento no está disponible. Escribe el nombre del alimento.",
                         icon=":material/info:")
-                st.caption(st.session_state.get("error_modelo", ""))
+                st.caption(f"Detalle técnico: {recurso}")
             if clase is None:
                 if cargado:
                     st.info("No se identificó un alimento. Acércalo a la cámara o prueba con otra foto.",
