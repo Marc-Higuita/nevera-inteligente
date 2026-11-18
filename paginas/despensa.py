@@ -238,7 +238,7 @@ def reconocer(imagen: Image.Image):
 
 def imagen_desde_enlace(url: str) -> Image.Image:
     import urllib.request
-    pedido = urllib.request.Request(url, headers={"User-Agent": "NeveraInteligente/1.0 (proyecto EAFIT)"})
+    pedido = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (NeveraInteligente; proyecto academico EAFIT)", "Accept": "image/*"})
     with urllib.request.urlopen(pedido, timeout=15) as r:
         return Image.open(io.BytesIO(r.read()))
 
@@ -265,9 +265,10 @@ with tab_cam:
             if enlace:
                 try:
                     imagen = imagen_desde_enlace(enlace.strip())
-                except Exception:
-                    st.error("No fue posible abrir la imagen. Verifica que el enlace termine en .jpg o .png.",
-                             icon=":material/link_off:")
+                except Exception as e:
+                    st.error("No fue posible abrir la imagen. Prueba con otro enlace o descarga la foto "
+                             "y usa la opción Subir foto.", icon=":material/link_off:")
+                    st.caption(f"Detalle técnico: {type(e).__name__}: {e}")
         else:
             foto = st.camera_input("Ubica el alimento frente a la cámara y toma la foto")
             if foto is not None:
