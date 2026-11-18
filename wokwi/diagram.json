@@ -13,8 +13,8 @@
     {
       "type": "wokwi-dht22",
       "id": "dht1",
-      "top": -48,
-      "left": -125,
+      "top": -10,
+      "left": -115,
       "attrs": {
         "temperature": "24",
         "humidity": "55"
@@ -23,15 +23,15 @@
     {
       "type": "wokwi-slide-switch",
       "id": "sw1",
-      "top": 105,
-      "left": -70,
+      "top": 160,
+      "left": -100,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led1",
-      "top": 178,
-      "left": 40,
+      "top": 30,
+      "left": 150,
       "attrs": {
         "color": "red",
         "label": "Alarma"
@@ -40,8 +40,8 @@
     {
       "type": "wokwi-led",
       "id": "led2",
-      "top": 222,
-      "left": 40,
+      "top": 30,
+      "left": 195,
       "attrs": {
         "color": "blue",
         "label": "Compresor"
@@ -50,8 +50,8 @@
     {
       "type": "wokwi-resistor",
       "id": "r1",
-      "top": 170,
-      "left": 105,
+      "top": 110,
+      "left": 141,
       "rotate": 90,
       "attrs": {
         "value": "220"
@@ -60,8 +60,8 @@
     {
       "type": "wokwi-resistor",
       "id": "r2",
-      "top": 214,
-      "left": 105,
+      "top": 110,
+      "left": 186,
       "rotate": 90,
       "attrs": {
         "value": "220"
@@ -70,8 +70,8 @@
     {
       "type": "wokwi-buzzer",
       "id": "bz1",
-      "top": 250,
-      "left": -40,
+      "top": 130,
+      "left": 235,
       "attrs": {
         "volume": "0.3"
       }
@@ -79,8 +79,8 @@
     {
       "type": "wokwi-lcd1602",
       "id": "lcd1",
-      "top": -40,
-      "left": 265,
+      "top": 290,
+      "left": -70,
       "attrs": {
         "pins": "i2c"
       }
