@@ -63,6 +63,10 @@ def obtener_cliente():
     client.on_message = on_message
     client.connect_async(BROKER, PUERTO, keepalive=60)
     client.loop_start()     # hilo en segundo plano que recibe los mensajes
+    for _ in range(30):     # espera hasta 3 s a que se establezca la conexión
+        if estado.conectado:
+            break
+        time.sleep(0.1)
     return client, estado
 
 
