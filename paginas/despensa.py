@@ -210,11 +210,9 @@ def cargar_modelo():
             for frase in frases:
                 textos.append(f"a photo of {frase}")
                 clases.append(clase)
-        with torch.no_grad():
-            entrada = procesador(text=textos, return_tensors="pt", padding=True)
-            emb = modelo.get_text_features(**entrada)
-            emb = emb / emb.norm(dim=-1, keepdim=True)
-        return modelo, procesador, emb, clases
+        entrada_texto = procesador(text=textos, return_tensors="pt", padding=True)
+        torch.set_num_threads(2)
+        return modelo, procesador, entrada_texto, clases
     except Exception as e:
         return f"{type(e).__name__}: {e}"   # texto del error, para mostrarlo en pantalla
 
@@ -223,12 +221,11 @@ def reconocer(imagen: Image.Image):
     """Devuelve (alimento o None, confianza)."""
     import torch
 
-    modelo, procesador, emb_textos, clases = cargar_modelo()
+    modelo, procesador, entrada_texto, clases = cargar_modelo()
     with torch.no_grad():
-        entrada = procesador(images=imagen.convert("RGB"), return_tensors="pt")
-        emb = modelo.get_image_features(**entrada)
-        emb = emb / emb.norm(dim=-1, keepdim=True)
-        probs = (100 * emb @ emb_textos.T).softmax(dim=-1)[0].tolist()
+        entrada_imagen = procesador(images=imagen.convert("RGB"), return_tensors="pt")
+        salida = modelo(**entrada_texto, pixel_values=entrada_imagen["pixel_values"])
+        probs = salida.logits_per_image.softmax(dim=-1)[0].tolist()
     total = {}
     for clase, p in zip(clases, probs):
         total[clase] = total.get(clase, 0) + p
